@@ -2,7 +2,7 @@
 一个面向长篇小说创作的 AI Native 开源项目。
 
 当前开发主线：
-`Creative Hub + 自动导演开书 + 本书世界上下文 + 整本生产主链 + 写法引擎`
+`AI Workbench + Creative Hub + 自动导演开书 + Reference Corpus + StoryState + Skills + 写法引擎`
 
 ![Monorepo](https://img.shields.io/badge/Monorepo-pnpm%20workspace-3C873A)
 ![Frontend](https://img.shields.io/badge/Frontend-React%20%2B%20Vite-61DAFB)
@@ -10,7 +10,7 @@
 ![LangChain](https://img.shields.io/badge/AI-LangChain-0EA5E9)
 ![LangGraph](https://img.shields.io/badge/Agent-LangGraph-7C3AED)
 ![Editor](https://img.shields.io/badge/Editor-Plate-7C3AED)
-![Database](https://img.shields.io/badge/Database-SQLite%20%2B%20Prisma-111827)
+![Database](https://img.shields.io/badge/Database-PostgreSQL%20%2B%20Prisma-111827)
 ![Vector DB](https://img.shields.io/badge/RAG-Qdrant-E63946)
 
 
@@ -21,8 +21,9 @@
 它的核心做法是：
 
 - 👉 用一句灵感启动整本书的规划，AI 自动给出方向 / 世界 / 角色 / 卷战略 / 章节任务
+- 👉 在 AI Workbench 里统一管理从零开书、导入续写、风格学习、批量生成、风险暂停和人工确认
 - 👉 把章节生成、审核、修复、状态回灌串成可暂停可恢复的生产链
-- 👉 把拆书、知识库、写法引擎、角色资源账本、世界手册都做成可召回的长期资产
+- 👉 把拆书、导入语料、知识库、写法引擎、Skills、角色资源账本、世界手册都做成可召回的长期资产
 - 👉 提供漫画、短剧等衍生工坊围绕已完成的小说内容做视觉与剧本延展
 - 👉 配套公开介绍站、生产链深度文档和按阶段的恢复手册
 
@@ -30,7 +31,9 @@
 
 ## Windows 桌面版
 
-如果你只是想直接下载安装并开始使用，优先从桌面版入口进入：
+当前 `novel-forge` 开发重点是本地 Web 工作台，优先按下文 `pnpm dev` 跑起来并访问 `/ai-workbench`。
+
+如果你只是想体验上游项目的桌面安装包，可以参考上游发布入口：
 
 - 下载入口：[GitHub Releases](https://github.com/ExplosiveCoderflome/AI-Novel-Writing-Assistant/releases)
 - 最新版本页：[Latest Release](https://github.com/ExplosiveCoderflome/AI-Novel-Writing-Assistant/releases/latest)
@@ -64,7 +67,54 @@
 
 ## 现在已经能做什么
 
-### 1. AI 自动导演开书与四种运行模式
+### 1. AI Workbench：自动小说生成系统入口
+
+- 新增 `/ai-workbench` 页面，把生产链、StoryState、章节树、人物关系图、时间线、伏笔、风格、Skills、模型调用、ReviewGate、StatePatch、批量任务放进同一工作台
+- 支持两类入口：**从零开书**和**导入续写**；从零开书可以生成书设、角色、世界观、前 20 章大纲和前三章样稿，导入续写可以基于已导入语料续写指定章节
+- Workbench 以 `Planner / ContextBuilder / Writer / Reviewer` 四角色组织执行记录，每一步输入、输出、模型调用、召回引用和审校结果都可以回看
+- 批量生成支持手动设置章节范围和批次数量，遇到高风险 ReviewGate 或 StatePatch 会进入 `waiting_approval`，等待人工确认后再继续
+- 页面提供可观察证据：生成是否引用旧章节、是否写入 StatePatch、是否触发 ReviewGate、是否存在质量债、是否有 checkpoint 可恢复
+
+### 2. Reference Corpus：导入续写与仿写基础
+
+- 可导入外部小说样章、章节片段或参考文本，生成章节、段落、摘要、实体候选、时间线候选、伏笔候选、风格候选等结构化 chunk
+- 续写支持直接续写、指定位置续写、大纲续写和风格续写；指定位置续写会使用章节/段落/锚点文本定位上下文
+- 导入语料通过 Postgres 保存业务事实，通过 Qdrant 做语义索引；生成时会展示召回片段、来源、分数和使用原因
+- 当目标小说还没有正式角色时，系统可以从语料角色候选生成少量临时角色种子，避免续写流水线因“无角色”阻断
+- 适用于同世界续写、按样章语气续写、在导入章节后继续第 N 章、基于旧稿重建上下文后再写
+
+### 3. StoryState：长文一致性运行时
+
+- StoryState 从 Postgres 聚合当前书的章节树、角色/关系、时间线、伏笔/兑现账本、StyleProfile、启用 Skills、ReviewGate、StatePatch 和质量债
+- 内置确定性检查包括死亡/离场角色再出现、地点时间冲突、伏笔逾期、核心角色缺席、时间线倒退、资源持有人冲突、能力设定冲突、主线过早兑现、重复事件、Skill 规则冲突
+- 质量债会按 blocking/error/warning/info 排序，指出来源、章节、证据和建议动作，帮助批量生成前先处理阻断项
+- 人物关系图、时间线、伏笔看板、章节树不是静态展示，而是直接读取运行时状态，用于检查长文前后一致性
+
+### 4. Skills 系统：题材与写作能力插件化
+
+- 新增本地 Skills 注册与项目启用机制，支持 `skills/builtin-skills.json` 和目录式 `skills/*/skill.json`
+- Skill 可以声明 prompt hooks、状态要求、ReviewGate 检查项、冲突键、规则说明、示例和 state schema
+- 当前内置方向覆盖多种网文题材与横向能力，例如悬疑推理、冷峻克制风格、去 AI 味等；项目可以按小说启用/禁用组合
+- 系统会检查 Skill 之间的冲突键、State schema 字段冲突，以及 Skill 与 StyleProfile 的风格契约冲突
+- Writer 会读取启用 Skill 的 hook，ReviewGate 会执行 Skill 检查并把命中证据写入审校结果
+
+### 5. 风格学习、仿写与 Style Lab
+
+- 写法引擎不再只是提示词里的一段说明，而是可保存、编辑、绑定、试写、复用的长期资产
+- 可从导入样章或现有文本生成结构化 StyleProfile，选择学习文风语言、章节结构、节奏爽点、去 AI 味等维度
+- Style Lab 支持按当前 StyleProfile 试写同一剧情，并立即执行风格偏离检测
+- 偏离报告会展示风险分、偏离点、命中规则、证据片段、原因和建议，便于判断“像不像样章”
+- 风格画像可与 Skills 同时参与 Writer、Reviewer、ReviewGate，而不是只在某一次生成 prompt 中临时出现
+
+### 6. ReviewGate、StatePatch 与人工确认闭环
+
+- ReviewGate 将任务适配、连续性、风格、可读性、状态补丁安全性拆成结构化评分
+- 高风险设定变更、角色死亡、核心真相揭露、状态写入等不会直接自动入账，而是生成 `needs_confirmation` StatePatch
+- StatePatch 面板支持接受、拒绝、撤销，并会联动关闭或保留关联 checkpoint
+- 批量任务恢复前会检查未处理的高风险 StatePatch，避免 AI 在用户未确认的状态上继续扩写
+- 适合“AI 批量推进，人类确认关键节点”的创作方式
+
+### 7. AI 自动导演开书与四种运行模式
 
 - 从一句灵感直接进入自动导演，无需先手写世界观、主线、角色和卷纲；系统先整理项目设定、对齐书级 framing，再生成多套整本方向和对应标题组
 - 方向不满意时可以继续生成、定向修订某一套方案、或只重做某套方案的标题组，避免"满意就确认 / 不满意就整批重来"
@@ -73,68 +123,62 @@
 - 全自动模式下每批章节完成后自动确认 pending 候选角色，角色进入正式名册并触发动态重建，消除后续章节角色一致性漂移
 - 链路覆盖书级方向、故事宏观规划、本书世界、角色准备、卷战略 / 卷骨架、节奏板、章节清单、章节细化、章节执行、审核、修复，每一阶段都支持检查点恢复、接管和换模型重试
 
-### 2. Creative Hub 与 Agent Runtime
+### 8. Creative Hub 与 Agent Runtime
 
 - 统一创作中枢承载对话、追问、规划、工具调用、任务状态和回合总结，不再是分散的功能按钮
 - 系统内有明确的 Planner、Tool Registry、Runtime、审批节点、状态卡片和中断恢复链路；自然语言意图会被路由到对应的自动导演阶段或章节任务
 - 浏览器暂停通知：到达 checkpoint 时弹出系统通知，长链路任务挂机更安心
 
-### 3. 整本生产主链与章节执行
+### 9. 整本生产主链与章节执行
 
 - 单章运行时、章节执行和整本批量 pipeline 收敛到同一条主链
 - 章节生成上下文按本章参与者精准筛选角色资源账本，避免把全部角色塞进 prompt；高风险已入账与待确认提案分别走不同审计代码，正文不会把待确认资源写成既成事实
 - 章节执行链覆盖正文生成、AI 审核、可修复问题处理、质量债务记录、角色状态 / 事实 / 伏笔回灌、下一章入口
 - LLM 限速器修复内存泄漏：provider 配置变更时淘汰旧限速器，长期运行内存稳定
 
-### 4. 拆书工作台与角色形象演变
+### 10. 拆书工作台与角色形象演变
 
 - 拆书角色档案分**简要 / 标准 / 深入 / 完整**四档，深入和完整档案会回溯原文片段补全维度
 - **角色形象演变**：按 25% / 50% / 75% / 100% 覆盖率增量扫描出场章节，沉淀每章外貌、服装、状态和场景锚点，并基于章节快照生成同一角色阶段形象图；提取的短外貌词条放入待确认区，勾选后融合到角色档案
 - 章节形象图可引用角色基础形象图，保持脸型 / 发型 / 标志细节一致
 - 拆书还提供双栏阅读、章节证据回溯、范围定向分析、token 预算守卫、稿件诊断模式
 
-### 5. 写法引擎与反 AI 规则
-
-- 写法不再只是提示词里的一段说明，而是可保存、编辑、绑定、试写、复用的长期资产
-- 可从现有文本提取写法特征 + 原文样本；特征沉淀为可见特征池，逐项启用 / 停用 / 组合，规则同步重编译
-- 写法引擎参与生成、检测和修正链路；反 AI 规则减少正文模板感、解释感和空泛表达
-
-### 6. 本书世界、角色、知识库联动 + RAG
+### 11. 本书世界、角色、知识库联动 + RAG
 
 - 世界观从大段设定文本升级为可生成 / 复用 / 同步的本书世界；地图、势力图谱会进入章节上下文
 - 拆书结果和知识库文档通过 RAG 回灌到规划、续写和正文生成
 - RAG 索引流式并行：Embedding 与 Qdrant 写入并发可调；拆书产物入 facets 索引让召回包含拆书结论；chunk hash 去重防止重建产生重复向量；retrieval trace 后端可追踪召回为什么命中
 
-### 7. 漫画与短剧衍生工坊
+### 12. 漫画与短剧衍生工坊
 
 - **漫画工作台**：场景一致性、角色视觉资产、视觉锚点控制；分镜与角色面板支持图像生成确认弹窗，避免误触消耗额度
 - **短剧改编生产管线 v3**：从小说内容衍生短剧剧本和镜头
 - 衍生工坊不在主链跑通前打开——它们消费的是小说已生成的章节、角色和场景
 
-### 8. 公开介绍站与文档体系
+### 13. 公开介绍站与文档体系
 
 - GitHub Pages **公开介绍站**（端口 4173）展示主链、产品截图、文档入口与下载链接
 - 文档站提供本地全文搜索、面包屑、文内目录、上 / 下一篇导航、tip / warn / checkpoint 提示块、GFM 表格
 - 33 篇公开文档：项目介绍、安装与准备、常见问题、故障排查、第一本小说实操路径、按阶段恢复手册、端到端生产链、自动导演阶段全景、章节执行链、知识与 RAG 召回链 + 模块说明
 - 模块文档配套真实产品截图；自动导演阶段名用中文表达，技术别名对照表保留在自动导演阶段全景文末供开发者查阅
 
-### 9. 模型路由与本地运行
+### 14. 模型路由与本地运行
 
 - 支持 OpenAI、DeepSeek、SiliconFlow、xAI 等多提供商；规划、正文、审阅、拆书等链路可按任务拆开路由
-- 默认 SQLite 即可跑通主链；需要 RAG 检索时再接入 Qdrant
+- 当前开发口径优先使用 PostgreSQL 作为主事实源；Qdrant 只作为语义索引服务
 - RAG 并发数、限速等运行时参数从 .env 迁到设置面板，改完即生效无需重启
 - Monorepo 拆分（pnpm workspace），桌面版 / 介绍站 / 服务端 / 客户端独立可构建
 
 
 ## 典型使用路径
 
-1. 在小说创建页输入一句灵感，先让 AI 自动导演给出整本方向候选。
-2. 进入 `项目设定`，先把题材、卖点、目标读者感受和前 30 章承诺定下来。
-3. 用 `故事宏观规划`、`本书世界` 和 `角色准备`，把整本主线、舞台边界和角色网补到能写。
-4. 进入 `卷战略 / 卷骨架` 决定怎么分卷，再到 `节奏 / 拆章` 把当前卷落到章节列表和单章细化。
-5. 按需绑定拆书结果、知识库文档和写法资产，让后续正文不只是靠一次性提示词。
-6. 进入 `章节执行` 逐章写作、审计、修复，必要时回到卷工作台做再平衡和重规划。
-7. 想加速推进时，再启动整本生产任务，持续查看状态、失败原因和回灌结果。
+1. 打开 `AI 工作台`，选择从零开书、导入续写、指定位置续写、大纲续写或风格续写。
+2. 如果是从零开始，输入灵感并选择需要的题材 Skills，先生成书设、角色、世界观、前 20 章大纲和样稿。
+3. 如果是续写/仿写，先导入参考语料到 Reference Corpus，检查实体、时间线、伏笔和风格候选是否被正确抽取。
+4. 进入 `StoryState`、`章节树`、`人物图谱`、`时间线`、`伏笔`、`风格` 和 `Skills` 标签，确认长文上下文是否稳定。
+5. 手动设置批量生成范围和章节数量，让 AI 连续推进；遇到 ReviewGate 高风险或 StatePatch 关键变更时，由人类确认。
+6. 需要更完整的开书流程时，再进入原有自动导演链路，逐步完成项目设定、故事宏观规划、本书世界、角色准备、卷战略和拆章。
+7. 生成后通过 ReviewGate、StatePatch、质量债和模型调用面板复盘质量、成本和可恢复 checkpoint。
 
 ## 当前长篇生成能力支撑图
 
@@ -149,6 +193,14 @@
 
 完整历史更新见 [docs/releases/release-notes.md](./docs/releases/release-notes.md)。
 
+### 2026-07-29
+
+- 新增 AI Workbench 本地开发版：统一展示生产链、StoryState、章节树、人物关系图、时间线、伏笔、风格、Skills、模型调用、ReviewGate、StatePatch、批量任务和 checkpoint。
+- 新增 Reference Corpus 导入续写能力：支持直接续写、指定位置续写、大纲续写、风格续写，并展示召回片段与使用原因。
+- 新增 Skills 注册与项目启用机制，支持本地内置 Skills、目录式 Skill 包、冲突检查、Writer prompt hook 和 ReviewGate Skill 检查。
+- 新增风格学习与 Style Lab 闭环：样章生成 StyleProfile，按风格试写，并由 Reviewer 输出偏离检测报告。
+- 当前 Workbench 开发口径以 PostgreSQL 为主事实源，Qdrant 只作为语义索引。
+
 ### 2026-07-17
 
 - 左侧导航菜单会在固定高度内独立滚动，窗口高度较小时也可以访问底部的系统入口。
@@ -160,6 +212,12 @@
 ### 功能概览中的95%以上编写都是AI完成
 
 下面这组截图优先展示当前版本正在使用的单书工作流：从自动导演开书，到项目设定、故事宏观规划、角色准备、卷战略、节奏拆章、章节执行，再到质量修复，已经开始收成一条连续推进链，而不是一组彼此割裂的演示页。
+
+### AI Workbench
+
+AI Workbench 是当前新增的自动小说生成系统入口，路径为 `/ai-workbench`。它把从零开书、导入续写、风格续写、批量生成、StoryState、Skills、ReviewGate、StatePatch、模型调用和 checkpoint 放在一个页面中，方便开发者检查 AI 是否真的按“规划 -> 上下文 -> 写作 -> 审校 -> 状态回灌”的链路执行。
+
+当前工作台更偏本地开发与验收界面：重点不是做一个简化聊天框，而是把长文生成中最容易失控的部分可视化，包括旧章节召回、人物关系、时间线、伏笔、风格画像、质量债、人工确认点和批量任务恢复。
 
 ### 提示词编辑器
 
@@ -308,9 +366,11 @@
   推荐直接使用 `20.19.x LTS`
 - pnpm `>= 10.6`
   推荐直接使用仓库声明的 `pnpm@10.6.0`
-- 至少一组可用的 LLM API Key
-  也可以先把项目跑起来，再在页面里配置
-- 如果你要完整体验知识库 / RAG，再额外准备可用的 Qdrant
+- PostgreSQL
+  当前 AI Workbench 开发口径使用 Postgres 作为主事实源
+- 至少一组 OpenAI-compatible LLM API Key
+  用于从零开书、续写、风格试写和 ReviewGate
+- 如果要完整体验 Reference Corpus / RAG / 导入续写，再额外准备 Qdrant 和 Embedding API Key
 
 ### 1. 安装依赖
 
@@ -381,16 +441,20 @@ Copy-Item server/.env.example server/.env
 
 最少建议先确认这些项目：
 
+- `AI_NOVEL_DATABASE_MODE=postgresql`
+  当前 Workbench 推荐固定使用 PostgreSQL
 - `DATABASE_URL`
-  默认就是本地 SQLite，可直接使用
-- `RAG_ENABLED`
-  如果你暂时不接知识库，建议先设为 `false`
+  指向本机 Postgres，例如 `postgresql://postgres:postgres@127.0.0.1:5432/ai_novel`
+- `OPENAI_BASE_URL`、`OPENAI_API_KEY`、`OPENAI_MODEL`
+  用于主模型调用；兼容 OpenAI 协议的网关也可以使用
+- `EMBEDDING_PROVIDER`、`EMBEDDING_MODEL`
+  用于 Reference Corpus 和 RAG 索引
 - `QDRANT_URL`、`QDRANT_API_KEY`
   只有要启用 Qdrant / RAG 时才需要
 
 注意：
 
-- `OPENAI_API_KEY`、`DEEPSEEK_API_KEY`、`SILICONFLOW_API_KEY` 这类变量可以先留空
+- `OPENAI_API_KEY`、`QWEN_API_KEY`、`DEEPSEEK_API_KEY`、`SILICONFLOW_API_KEY` 这类变量只写入本地 `server/.env`，不要提交到仓库
 - 项目启动后，也可以在页面中配置模型供应商和默认模型
 
 #### 2.2 前端环境变量
@@ -453,27 +517,42 @@ Copy-Item client/.env.example client/.env
 
 ### 3. 启动开发环境
 
+首次使用 Postgres 时，先创建数据库：
+
+```bash
+createdb ai_novel
+```
+
+如果你希望用迁移链初始化空库，可以执行：
+
+```bash
+AI_NOVEL_DATABASE_MODE=postgresql \
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/ai_novel \
+pnpm --filter @ai-novel/server prisma:deploy
+```
+
+开发模式也会在服务端启动时自动执行 Prisma generate / db push，用于让本地 schema 保持可运行。
+
 ```bash
 pnpm dev
 ```
 
-如果你已经复制好了 `server/.env` 和 `client/.env`，默认就是直接运行这一条。
-不需要在首次启动前手动再执行 `prisma generate`、`prisma db push` 或 `pnpm db:migrate`。
+如果你已经复制好了 `server/.env` 和 `client/.env`，并且 Postgres 数据库已创建，默认就是直接运行这一条。
+开发脚本会自动执行 Prisma generate / db push；如果你需要严格使用迁移链初始化空库，可以在启动前手动执行上面的 `prisma:deploy`。
 
 默认情况下：
 
 - 前端：`http://localhost:5173`
 - 后端：`http://localhost:3000`
 - API：`http://localhost:3000/api`
-
-首次启动服务端时，会自动执行 Prisma generate 和 `db push`。
-只有在你自己修改了 Prisma schema，或者要处理正式迁移流程时，才需要手动使用 Prisma / 数据库相关命令。
+- AI Workbench：`http://localhost:5173/ai-workbench`
 
 建议第一次启动后先做这几步：
 
 1. 打开 `http://localhost:5173/settings`，至少配置一组可用的模型供应商 API Key
 2. 打开 `http://localhost:5173/settings/model-routes`，检查各任务实际使用的模型路由
-3. 如果要启用知识库，打开 `http://localhost:5173/knowledge?tab=settings`，保存 Embedding / Collection 设置
+3. 如果要启用导入续写 / RAG，打开 `http://localhost:5173/knowledge?tab=settings`，保存 Embedding / Collection 设置
+4. 打开 `http://localhost:5173/ai-workbench`，选择从零开书、导入续写、风格试写或批量生成
 
 ### 4. 如果你使用 Qdrant Cloud
 
@@ -533,6 +612,8 @@ pnpm dev
 pnpm build
 pnpm typecheck
 pnpm lint
+# 初始化或更新 Postgres 空库
+pnpm --filter @ai-novel/server prisma:deploy
 # 仅在你开发/调整 Prisma schema 时再手动使用
 pnpm db:migrate
 pnpm db:seed
@@ -551,51 +632,42 @@ pnpm --filter @ai-novel/server test:book-analysis
 | 前端 | React 19、Vite、React Router、TanStack Query、Plate |
 | 后端 | Express 5、Prisma、Zod |
 | AI 编排 | LangChain、LangGraph |
-| 数据库 | SQLite |
-| RAG | Qdrant |
+| 数据库 | PostgreSQL（当前 Workbench 主事实源）、SQLite（兼容开发模式） |
+| RAG | Qdrant、Reference Corpus、Embedding 检索 |
 | 工程形态 | pnpm workspace Monorepo |
 
 ### Monorepo 结构
 
 ```text
-client/   React + Vite 前端
-server/   Express + Prisma + Agent Runtime + Creative Hub
+client/   React + Vite 前端，包括 AI Workbench 页面
+server/   Express + Prisma + Agent Runtime + Creative Hub + Workbench 服务
 shared/   前后端共享类型与协议
+skills/   本地内置 Skills 和目录式 Skill 包入口
 images/   README 与产品预览截图
 scripts/  启动和辅助脚本
-docs/     设计文档、阶段检查点、模块计划与历史归档
+docs/     设计文档、开发说明、模块计划与历史归档
 ```
 
 更细的文档分区说明可以看 [docs/README.md](./docs/README.md)。
 
 ### 当前系统关注点
 
-- `Creative Hub` 负责统一创作中枢与 Agent 运行时体验
-- `Novel Setup / Director` 负责从一句灵感走到整本可写
-- `Novel Production` 负责整本生成主链
-- `Style Engine` 负责写法资产、特征提取、绑定和反 AI 协同
-- `Knowledge / Book Analysis / World` 负责长期上下文沉淀与回灌
+- `AI Workbench` 负责从零开书、导入续写、批量生成、风格试写和生产链可观察性
+- `StoryState` 负责长文一致性聚合，包括章节树、人物关系、时间线、伏笔、质量债和冲突检查
+- `Reference Corpus` 负责导入样章/旧稿后的结构化抽取、语义索引和续写召回
+- `Skills` 负责题材、风格和写作能力插件化，并参与 Writer prompt hook 与 ReviewGate 检查
+- `Creative Hub / Novel Production` 负责原有自动导演、整本生产主链和章节执行
+- `Style Engine` 负责写法资产、StyleProfile、风格试写、偏离检测和反 AI 协同
 
-## 当前路线图
+## 当前优化方向
 
-当前最重要的不是继续堆零散功能，而是提高“小白把整本书写完”的成功率。
+当前重点是把“写得稳、前后一致、可控”落实到本地 Web 工作台，而不是继续堆彼此割裂的生成按钮。
 
-### P0
-
-- 稳定自动导演连续执行，减少误停链、重复审校和异常 Token 消耗
-- 让本书世界、角色、伏笔、时间线和章节任务稳定进入后续写作上下文
-- 降低新手从一句灵感到可连续写章之间的判断成本和修复成本
-
-### P1
-
-- 提高整本一致性、节奏稳定性、人物成长质量和世界状态继承质量
-- 让写法资产、世界约束、章节重规划、审阅反馈和质量债形成闭环
-- 让系统更擅长“持续掌控整本书”，而不只是“生成某一章”
-
-### P2
-
-- 继续强化多阶段 Agent 协同和运行时可观察性
-- 完善更自动化的生产调度、恢复策略、回合记忆和整本质量控制
+- 稳定 AI Workbench 的从零开书、导入续写、批量生成、风险暂停和恢复闭环
+- 强化 Reference Corpus 召回质量，让续写能明确引用旧章节、样章风格、时间线和伏笔
+- 扩展 Skills 体系，让不同中文网文方向可以作为可启用、可审计、可冲突检查的能力包
+- 提高 StoryState 的一致性检查覆盖率，把人物、时间线、伏笔、设定和资源状态都纳入生成前检查
+- 持续优化 Style Lab 和写法引擎，让仿写/风格模仿能被试写、检测、对比和修正
 
 ## 交流反馈
 
