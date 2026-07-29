@@ -1,0 +1,236 @@
+[
+  {
+    "id": "xuanhuan-upgrade",
+    "name": "玄幻升级流",
+    "type": ["GenreSkill", "StateSkill", "ReviewSkill"],
+    "description": "面向中文玄幻升级流的开书、章节推进、境界状态和爽点门禁规则。",
+    "stateRequirements": ["realm", "cultivationMethod", "treasures", "factions", "breakthroughProgress"],
+    "promptHooks": {
+      "planBook": "建立境界、功法、势力和奖励节奏，避免开局信息堆砌。",
+      "planChapter": "每章必须推进升级压力、资源变化或敌我实力对比。",
+      "write": "强化爽点兑现、压迫感和阶段性收获，避免反派降智。",
+      "review": "检查境界跳跃、奖励节奏、敌人缩放和设定堆砌。"
+    },
+    "reviewGates": ["realm_consistency", "reward_cadence", "enemy_scaling", "anti_info_dump"],
+    "riskTriggers": ["realm_jump", "core_rule_change", "main_enemy_defeated", "treasure_lost"],
+    "visualFocus": ["power_progression", "faction_graph", "foreshadowing_board"],
+    "conflictKeys": ["power_system", "reward_cadence"],
+    "priority": 10
+  },
+  {
+    "id": "xianxia-cultivation",
+    "name": "仙侠修真",
+    "type": ["GenreSkill", "StateSkill", "ReviewSkill"],
+    "description": "面向修为、宗门、因果、法器和洞府体系的长篇修真规则。",
+    "stateRequirements": ["cultivationRealm", "sect", "karma", "artifacts", "caveEstate"],
+    "promptHooks": {
+      "planBook": "先定义修为体系、宗门秩序、机缘来源和因果代价。",
+      "planChapter": "章节推进需体现修为约束、宗门关系或机缘代价。",
+      "write": "保持仙侠语感与修炼秩序，不让机缘无成本解决冲突。",
+      "review": "检查修为体系、宗门关系、机缘密度和因果兑现。"
+    },
+    "reviewGates": ["cultivation_system", "sect_relation", "opportunity_density"],
+    "riskTriggers": ["realm_jump", "karma_rule_change", "artifact_overpower"],
+    "visualFocus": ["cultivation_progression", "sect_graph", "artifact_ledger"],
+    "conflictKeys": ["power_system", "sect_system"],
+    "priority": 20
+  },
+  {
+    "id": "urban-realistic",
+    "name": "都市现实",
+    "type": ["GenreSkill", "StateSkill", "ReviewSkill"],
+    "description": "面向职业、人情关系、城市地点和现实约束的都市现实题材规则。",
+    "stateRequirements": ["career", "relationshipNetwork", "cityLocations", "realisticConstraints"],
+    "promptHooks": {
+      "planBook": "建立职业路径、关系网和城市现实约束。",
+      "planChapter": "每章冲突要来自职业、人情或现实成本。",
+      "write": "保持生活质感和现实可信度，避免事件便利化。",
+      "review": "检查现实可信度、人情关系和节奏拖沓。"
+    },
+    "reviewGates": ["realism_check", "relationship_cost", "pacing_drag"],
+    "riskTriggers": ["unearned_success", "legal_or_workplace_break", "relationship_reset"],
+    "visualFocus": ["relationship_graph", "city_locations", "career_progress"],
+    "conflictKeys": ["realism", "city_constraints"],
+    "priority": 30
+  },
+  {
+    "id": "urban-superpower",
+    "name": "都市异能",
+    "type": ["GenreSkill", "StateSkill", "ReviewSkill"],
+    "description": "面向能力体系、组织、隐藏身份和战力膨胀控制的都市异能规则。",
+    "stateRequirements": ["abilitySystem", "organizations", "hiddenIdentity", "powerCost"],
+    "promptHooks": {
+      "planBook": "定义能力边界、组织结构、身份风险和代价。",
+      "planChapter": "章节必须推进能力使用代价、身份暴露风险或组织压力。",
+      "write": "让异能服务都市冲突，不把能力写成万能解法。",
+      "review": "检查能力滥用、身份暴露和战力膨胀。"
+    },
+    "reviewGates": ["ability_limits", "identity_exposure", "power_inflation"],
+    "riskTriggers": ["ability_rule_change", "identity_exposed", "power_breakthrough"],
+    "visualFocus": ["ability_ledger", "organization_graph", "identity_risk"],
+    "conflictKeys": ["power_system", "identity_status"],
+    "priority": 40
+  },
+  {
+    "id": "mystery-deduction",
+    "name": "悬疑推理",
+    "type": ["GenreSkill", "StateSkill", "ReviewSkill"],
+    "description": "面向线索、公平性、嫌疑人、读者已知和红鲱鱼管理的悬疑推理规则。",
+    "stateRequirements": ["clues", "suspects", "readerKnown", "protagonistKnown", "redHerrings"],
+    "promptHooks": {
+      "planBook": "先建立真相、关键线索、误导线和公平揭示顺序。",
+      "planChapter": "每章至少推进一个线索、嫌疑人变化或认知差。",
+      "write": "保持冷静信息控制，避免提前泄露真相。",
+      "review": "检查线索公平性、真相过早暴露和逻辑漏洞。"
+    },
+    "reviewGates": ["fair_clue", "truth_exposure", "logic_gap", "red_herring_balance"],
+    "riskTriggers": ["killer_revealed", "core_clue_changed", "logic_break"],
+    "visualFocus": ["clue_board", "suspect_graph", "timeline"],
+    "conflictKeys": ["clue_state", "truth_state"],
+    "priority": 50
+  },
+  {
+    "id": "science-fiction",
+    "name": "科幻",
+    "type": ["GenreSkill", "StateSkill", "ReviewSkill"],
+    "description": "面向科技规则、组织、星球/城市和限制条件的科幻规则。",
+    "stateRequirements": ["technologyRules", "organizations", "planetsOrCities", "constraints"],
+    "promptHooks": {
+      "planBook": "建立科技边界、组织博弈、空间环境和限制条件。",
+      "planChapter": "章节冲突需受科技规则和资源限制约束。",
+      "write": "把技术设定嵌入行动和选择，避免说明堆积。",
+      "review": "检查科技万能化、设定冲突和解释过度。"
+    },
+    "reviewGates": ["tech_limit", "setting_consistency", "anti_exposition"],
+    "riskTriggers": ["tech_rule_change", "resource_infinite", "planet_scale_jump"],
+    "visualFocus": ["technology_rules", "organization_graph", "location_map"],
+    "conflictKeys": ["technology_rules", "world_constraints"],
+    "priority": 60
+  },
+  {
+    "id": "alternate-history",
+    "name": "历史架空",
+    "type": ["GenreSkill", "StateSkill", "ReviewSkill"],
+    "description": "面向年代、政权、制度、地理和时代语感的历史架空规则。",
+    "stateRequirements": ["era", "regimes", "institutions", "geography", "periodLanguage"],
+    "promptHooks": {
+      "planBook": "建立时代约束、政权结构、制度成本和地理动线。",
+      "planChapter": "章节推进要尊重制度、交通、信息传播和阶层限制。",
+      "write": "控制现代语气，保持制度压力和历史质感。",
+      "review": "检查历史违和、制度冲突和现代语气。"
+    },
+    "reviewGates": ["period_consistency", "institution_logic", "modern_tone"],
+    "riskTriggers": ["institution_break", "anachronism", "geography_conflict"],
+    "visualFocus": ["regime_graph", "timeline", "geography"],
+    "conflictKeys": ["history_period", "institution_rules"],
+    "priority": 70
+  },
+  {
+    "id": "romance",
+    "name": "言情",
+    "type": ["GenreSkill", "StateSkill", "ReviewSkill"],
+    "description": "面向情感阶段、误会、关系推进和亲密度的言情规则。",
+    "stateRequirements": ["relationshipStage", "misunderstanding", "intimacy", "emotionalDebt"],
+    "promptHooks": {
+      "planBook": "设计关系阶段、误会来源、情感债和阶段性靠近。",
+      "planChapter": "每章需要推进关系认知、情绪交换或误会变化。",
+      "write": "让情感变化来自具体事件和选择，避免突然告白或工具化。",
+      "review": "检查情感跳跃、误会重复和角色工具化。"
+    },
+    "reviewGates": ["relationship_progression", "misunderstanding_loop", "character_agency"],
+    "riskTriggers": ["relationship_stage_jump", "forced_intimacy", "misunderstanding_reset"],
+    "visualFocus": ["relationship_graph", "emotion_timeline", "misunderstanding_board"],
+    "conflictKeys": ["relationship_stage", "emotion_arc"],
+    "priority": 80
+  },
+  {
+    "id": "infinite-flow",
+    "name": "无限流",
+    "type": ["GenreSkill", "StateSkill", "ReviewSkill"],
+    "description": "面向副本、规则、任务、奖励和队友状态的无限流规则。",
+    "stateRequirements": ["instanceRules", "missions", "rewards", "teamState", "cycleProgress"],
+    "promptHooks": {
+      "planBook": "建立副本类型、规则边界、奖励体系和主线循环。",
+      "planChapter": "章节必须推进副本规则理解、任务压力或队友状态变化。",
+      "write": "保持规则可推理、奖励有代价、循环有新信息。",
+      "review": "检查副本规则冲突、奖励失衡和循环套路。"
+    },
+    "reviewGates": ["instance_rule_consistency", "reward_balance", "cycle_freshness"],
+    "riskTriggers": ["rule_break", "reward_overpower", "team_member_removed"],
+    "visualFocus": ["instance_rules", "mission_board", "team_state"],
+    "conflictKeys": ["instance_rules", "reward_system"],
+    "priority": 90
+  },
+  {
+    "id": "post-apocalypse",
+    "name": "末世",
+    "type": ["GenreSkill", "StateSkill", "ReviewSkill"],
+    "description": "面向资源、基地、威胁和队伍状态的末世生存规则。",
+    "stateRequirements": ["resources", "base", "threats", "teamState", "survivalPressure"],
+    "promptHooks": {
+      "planBook": "建立资源稀缺、基地规则、威胁层级和队伍分工。",
+      "planChapter": "章节需要体现资源消耗、基地压力或威胁升级。",
+      "write": "保持生存压力和人际代价，不让资源凭空补满。",
+      "review": "检查资源无限、威胁降智和生存压力不足。"
+    },
+    "reviewGates": ["resource_scarcity", "threat_intelligence", "survival_pressure"],
+    "riskTriggers": ["resource_infinite", "base_destroyed", "major_threat_removed"],
+    "visualFocus": ["resource_ledger", "base_status", "threat_board"],
+    "conflictKeys": ["resource_system", "threat_level"],
+    "priority": 100
+  },
+  {
+    "id": "light-novel",
+    "name": "轻小说",
+    "type": ["GenreSkill", "StyleSkill", "ReviewSkill"],
+    "description": "面向人设标签、吐槽节奏、日常事件和关系张力的轻小说规则。",
+    "stateRequirements": ["characterTags", "banterRhythm", "dailyEvents", "relationshipTension"],
+    "promptHooks": {
+      "planBook": "建立鲜明人设标签、日常冲突、关系张力和轻快推进。",
+      "planChapter": "章节需要推进日常事件、吐槽关系或轻量主线信息。",
+      "write": "保持轻快语气和角色互动，不让吐槽吞掉剧情。",
+      "review": "检查人设扁平、吐槽过密和剧情停滞。"
+    },
+    "reviewGates": ["character_tag_depth", "banter_density", "plot_motion"],
+    "riskTriggers": ["character_tag_flattened", "plot_stall", "tone_break"],
+    "visualFocus": ["character_tags", "relationship_graph", "daily_event_timeline"],
+    "conflictKeys": ["tone", "character_tags"],
+    "priority": 110
+  },
+  {
+    "id": "cold-restrained-style",
+    "name": "冷峻克制",
+    "type": ["StyleSkill"],
+    "description": "面向悬疑、都市和现实题材的冷峻克制写法规则，控制解释密度、情绪外放和修辞强度。",
+    "stateRequirements": ["toneContract", "emotionTemperature", "detailDensity", "implicitConflict"],
+    "promptHooks": {
+      "planBook": "建立低情绪外放、强信息控制和克制叙述的整体语气契约。",
+      "planChapter": "章节目标需要保留潜台词、冷静观察和有限情绪泄露。",
+      "write": "使用短到中等句、具体动作和可验证细节，避免煽情、口号化和过度解释。",
+      "review": "检查语气是否冷峻克制，是否出现夸张形容、情绪直白宣告或解释性旁白。"
+    },
+    "reviewGates": ["cold_tone_consistency", "emotion_overstatement", "concrete_detail_ratio", "implicit_conflict"],
+    "riskTriggers": ["tone_overheated", "melodrama_spike", "exposition_overflow"],
+    "visualFocus": ["style_analysis", "tone_drift", "review_gate"],
+    "conflictKeys": ["tone", "style_contract"],
+    "priority": 120
+  },
+  {
+    "id": "anti-ai-writing",
+    "name": "去 AI 味",
+    "type": ["ReviewSkill"],
+    "description": "面向模板化表达、空泛总结、解释过度和机械节奏的审校规则。",
+    "stateRequirements": ["antiAiRules", "specificityLedger", "sentenceRhythm", "sceneGrounding"],
+    "promptHooks": {
+      "planBook": "规划时避免通用套路堆叠，明确每条主线的具体场景、代价和不可替代细节。",
+      "planChapter": "章节任务需要给出具体行动、物件、地点和信息差，减少泛化表达空间。",
+      "write": "避免总结式抒情、万能转折、抽象价值判断和重复句式，用行动、感官和选择承载信息。",
+      "review": "检查 AI 腔、模板句、空泛解释、同义反复和缺少场景落点的问题。"
+    },
+    "reviewGates": ["anti_ai_cliche", "specificity_check", "show_not_tell", "rhythm_variation", "no_generic_summary"],
+    "riskTriggers": ["generic_paragraph_cluster", "excessive_explanation", "template_transition", "abstract_emotion_dump"],
+    "visualFocus": ["style_analysis", "review_gate", "state_patch"],
+    "conflictKeys": ["anti_ai_policy", "style_contract"],
+    "priority": 130
+  }
+]
