@@ -34,6 +34,7 @@ import novelDirectorRouter from "./services/novel/director/http/novelDirector";
 import novelExportRouter from "./modules/export/http/novelExport";
 import novelWorkflowsRouter from "./services/novel/director/http/novelWorkflows";
 import promptWorkbenchRouter from "./routes/promptWorkbench";
+import referenceLibraryRouter from "./routes/referenceLibrary";
 import ragRouter from "./routes/rag";
 import settingsAutoDirectorRouter from "./routes/settingsAutoDirector";
 import settingsRouter from "./routes/settings";
@@ -60,6 +61,7 @@ import { qualityDebtSettingsService } from "./services/settings/QualityDebtSetti
 import { DirectorWorker } from "./workers/directorWorker";
 import { cleanupLogDirectory, resolveLogRetentionConfig } from "./platform/logging/logRetention";
 import { resolveLogsRoot } from "./runtime/appPaths";
+import { referenceLibraryWorker } from "./services/referenceLibrary/ReferenceLibraryWorker";
 
 getSharedNovelServices();
 registerNovelEventHandlers(novelEventBus);
@@ -148,6 +150,7 @@ export function createApp() {
   app.use("/api/chat", chatRouter);
   app.use("/api/creative-hub", creativeHubRouter);
   app.use("/api/prompt-workbench", promptWorkbenchRouter);
+  app.use("/api/reference-library", referenceLibraryRouter);
   app.use("/api/images", imagesRouter);
   app.use("/api/visual-assets", visualAssetRouter);
   app.use("/api/tasks", tasksRouter);
@@ -254,6 +257,9 @@ function scheduleLogRetentionCleanup(): void {
 }
 
 function initializeBackgroundServices(): BackgroundServicesHandle {
+  void referenceLibraryWorker.start().catch((error) => {
+    console.error("[reference-library] failed to start", error);
+  });
   ragServices.ragWorker.start();
   ragServices.ragRetrievalTraceRetention.start();
   novelSideEffectWorker.start();
@@ -296,6 +302,7 @@ function initializeBackgroundServices(): BackgroundServicesHandle {
       ragServices.ragRetrievalTraceRetention.stop();
       bookAnalysisService.stopWatchdog();
       novelPipelineRuntimeService.stopWatchdog();
+      referenceLibraryWorker.stop();
     },
   };
 }

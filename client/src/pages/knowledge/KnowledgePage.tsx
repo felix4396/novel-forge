@@ -43,7 +43,7 @@ export default function KnowledgePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [keyword, setKeyword] = useState("");
   const [status, setStatus] = useState<KnowledgeDocumentStatus | "">("");
-  const [selectedDocumentId, setSelectedDocumentId] = useState("");
+  const [selectedDocumentId, setSelectedDocumentId] = useState(searchParams.get("documentId") ?? "");
   const [uploadTitle, setUploadTitle] = useState("");
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [uploadBusy, setUploadBusy] = useState(false);

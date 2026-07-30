@@ -1,0 +1,7 @@
+FROM ghcr.io/freeok/sonovel:latest
+
+COPY target/app-jar-with-dependencies.jar /bridge/app.jar
+
+WORKDIR /sonovel
+
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -XX:+UseZGC -XX:+ZGenerational -Dfile.encoding=UTF-8 -Duser.timezone=GMT+08 -jar /bridge/app.jar"]

@@ -35,6 +35,7 @@ const WorldGenerator = lazy(() => import("@/pages/worlds/WorldGenerator"));
 const WorldWorkspace = lazy(() => import("@/pages/worlds/WorldWorkspace"));
 const WritingFormulaPage = lazy(() => import("@/pages/writingFormula/WritingFormulaPage"));
 const CharacterLibrary = lazy(() => import("@/pages/characters/CharacterLibrary"));
+const ReferenceLibraryPage = lazy(() => import("@/pages/referenceLibrary/ReferenceLibraryPage"));
 
 const routes: RouteObject[] = [
   {
@@ -82,6 +83,7 @@ const routes: RouteObject[] = [
       { path: "style-engine", element: <WritingFormulaPage /> },
       { path: "writing-formula", element: <Navigate to="/style-engine" replace /> },
       { path: "base-characters", element: <CharacterLibrary /> },
+      { path: "reference-library", element: <ReferenceLibraryPage /> },
       { path: "*", element: <Navigate to="/" replace /> },
     ],
   },

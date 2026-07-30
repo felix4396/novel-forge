@@ -17,6 +17,7 @@ import { ImageTaskAdapter } from "./adapters/ImageTaskAdapter";
 import { NovelWorkflowTaskAdapter } from "./adapters/NovelWorkflowTaskAdapter";
 import { PipelineTaskAdapter } from "./adapters/PipelineTaskAdapter";
 import { StyleExtractionTaskAdapter } from "./adapters/StyleExtractionTaskAdapter";
+import { ReferenceLibraryTaskAdapter } from "./adapters/ReferenceLibraryTaskAdapter";
 import { collectWorkflowLinkedPipelineIds } from "./taskCenterVisibility";
 import {
   compareTaskSummary,
@@ -37,6 +38,8 @@ const overviewTaskKinds: TaskKind[] = [
   "agent_run",
   "novel_workflow",
   "style_extraction",
+  "reference_search",
+  "reference_download",
 ];
 
 export class TaskCenterService {
@@ -55,6 +58,7 @@ export class TaskCenterService {
   private readonly agentAdapter = new AgentRunTaskAdapter();
 
   private readonly styleExtractionAdapter = new StyleExtractionTaskAdapter();
+  private readonly referenceLibraryAdapter = new ReferenceLibraryTaskAdapter();
 
   async getOverview(): Promise<TaskOverviewSummary> {
     const archivedIdsByKind = await getArchivedTaskIdsByKind(overviewTaskKinds);
@@ -65,6 +69,8 @@ export class TaskCenterService {
     const archivedAgentIds = archivedIdsByKind.get("agent_run") ?? [];
     const archivedWorkflowIds = archivedIdsByKind.get("novel_workflow") ?? [];
     const archivedStyleExtractionIds = archivedIdsByKind.get("style_extraction") ?? [];
+    const archivedReferenceSearchIds = archivedIdsByKind.get("reference_search") ?? [];
+    const archivedReferenceDownloadIds = archivedIdsByKind.get("reference_download") ?? [];
 
     const [
       bookRows,
@@ -196,6 +202,29 @@ export class TaskCenterService {
       }
     }
 
+    const referenceRows = await Promise.all([
+      prisma.referenceSearchJob.groupBy({
+        by: ["status"],
+        where: archivedReferenceSearchIds.length ? { id: { notIn: archivedReferenceSearchIds } } : undefined,
+        _count: { _all: true },
+      }),
+      prisma.referenceDownloadJob.groupBy({
+        by: ["status"],
+        where: archivedReferenceDownloadIds.length ? { id: { notIn: archivedReferenceDownloadIds } } : undefined,
+        _count: { _all: true },
+      }),
+    ]);
+    for (const rows of referenceRows) {
+      for (const row of rows) {
+        const status = row.status as TaskStatus;
+        const count = row._count._all;
+        if (status === "queued") overview.queuedCount += count;
+        else if (status === "running") overview.runningCount += count;
+        else if (status === "failed") overview.failedCount += count;
+        else if (status === "cancelled") overview.cancelledCount += count;
+      }
+    }
+
     return overview;
   }
 
@@ -205,7 +234,7 @@ export class TaskCenterService {
     const keyword = normalizeKeyword(filters.keyword);
     const cursorPayload = parseCursor(filters.cursor);
 
-    const [bookTasks, novelTasks, knowledgeTasks, imageTasks, agentTasks, workflowTasks, styleExtractionTasks] = await Promise.all([
+    const [bookTasks, novelTasks, knowledgeTasks, imageTasks, agentTasks, workflowTasks, styleExtractionTasks, referenceSearchTasks, referenceDownloadTasks] = await Promise.all([
       filters.kind && filters.kind !== "book_analysis"
         ? Promise.resolve<UnifiedTaskSummary[]>([])
         : this.bookAdapter.list({ status: filters.status, keyword, take: sourceTake }),
@@ -227,6 +256,12 @@ export class TaskCenterService {
       filters.kind && filters.kind !== "style_extraction"
         ? Promise.resolve<UnifiedTaskSummary[]>([])
         : this.styleExtractionAdapter.list({ status: filters.status, keyword, take: sourceTake }),
+      filters.kind && filters.kind !== "reference_search"
+        ? Promise.resolve<UnifiedTaskSummary[]>([])
+        : this.referenceLibraryAdapter.list("reference_search", { status: filters.status, keyword, take: sourceTake }),
+      filters.kind && filters.kind !== "reference_download"
+        ? Promise.resolve<UnifiedTaskSummary[]>([])
+        : this.referenceLibraryAdapter.list("reference_download", { status: filters.status, keyword, take: sourceTake }),
     ]);
 
     const linkedPipelineIds = filters.kind === "novel_pipeline"
@@ -236,7 +271,7 @@ export class TaskCenterService {
       ? novelTasks
       : novelTasks.filter((task) => !linkedPipelineIds.has(task.id));
 
-    const merged = [...bookTasks, ...visibleNovelTasks, ...knowledgeTasks, ...imageTasks, ...agentTasks, ...workflowTasks, ...styleExtractionTasks]
+    const merged = [...bookTasks, ...visibleNovelTasks, ...knowledgeTasks, ...imageTasks, ...agentTasks, ...workflowTasks, ...styleExtractionTasks, ...referenceSearchTasks, ...referenceDownloadTasks]
       .sort(compareTaskSummary);
     const filteredByCursor = cursorPayload
       ? merged.filter((item) => isAfterCursor(item, cursorPayload))
@@ -268,6 +303,9 @@ export class TaskCenterService {
     }
     if (kind === "style_extraction") {
       return this.styleExtractionAdapter.detail(id);
+    }
+    if (kind === "reference_search" || kind === "reference_download") {
+      return this.referenceLibraryAdapter.detail(kind, id);
     }
     return this.imageAdapter.detail(id);
   }
@@ -307,6 +345,9 @@ export class TaskCenterService {
     if (kind === "style_extraction") {
       return this.styleExtractionAdapter.retry(id);
     }
+    if (kind === "reference_search" || kind === "reference_download") {
+      return this.referenceLibraryAdapter.retry(kind, id);
+    }
     throw new AppError(`Unsupported task kind: ${kind}`, 400);
   }
 
@@ -332,6 +373,9 @@ export class TaskCenterService {
     if (kind === "style_extraction") {
       return this.styleExtractionAdapter.cancel(id);
     }
+    if (kind === "reference_search" || kind === "reference_download") {
+      return this.referenceLibraryAdapter.cancel(kind, id);
+    }
     throw new AppError(`Unsupported task kind: ${kind}`, 400);
   }
 
@@ -356,6 +400,9 @@ export class TaskCenterService {
     }
     if (kind === "style_extraction") {
       return this.styleExtractionAdapter.archive(id);
+    }
+    if (kind === "reference_search" || kind === "reference_download") {
+      return this.referenceLibraryAdapter.archive(kind, id);
     }
     throw new AppError(`Unsupported task kind: ${kind}`, 400);
   }

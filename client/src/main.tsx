@@ -20,11 +20,14 @@ const queryClient = new QueryClient({
 });
 
 const AppRouterProvider = APP_RUNTIME === "desktop" ? HashRouter : BrowserRouter;
+const routerBaseName = APP_RUNTIME === "web"
+  ? import.meta.env.VITE_APP_BASENAME?.trim() || undefined
+  : undefined;
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <AppRouterProvider>
+      <AppRouterProvider basename={routerBaseName}>
         <DesktopBootstrapBoundary>
           <ServerStartupGate>
             <AppRouter />

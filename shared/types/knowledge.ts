@@ -1,5 +1,5 @@
 export type KnowledgeDocumentStatus = "enabled" | "disabled" | "archived";
-export type KnowledgeDocumentKind = "user_upload" | "analysis_published";
+export type KnowledgeDocumentKind = "user_upload" | "analysis_published" | "reference_import";
 export type KnowledgeIndexStatus = "idle" | "queued" | "running" | "succeeded" | "failed";
 export type KnowledgeBindingTargetType = "novel" | "world";
 

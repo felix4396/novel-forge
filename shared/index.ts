@@ -15,6 +15,7 @@ export * from "./types/pagination";
 export * from "./types/agent";
 export * from "./types/aiWorkbench";
 export * from "./types/referenceCorpus";
+export * from "./types/referenceLibrary";
 export * from "./types/task";
 export * from "./types/world";
 export * from "./types/novelWorld";

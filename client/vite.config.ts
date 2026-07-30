@@ -59,11 +59,21 @@ function resolveDesktopAppVersion(): string {
 
 clearStaleOptimizeCache(__dirname);
 
-const isDesktopRelativeBaseBuild = process.env.AI_NOVEL_CLIENT_BASE === "relative";
+function resolveClientBase(): string {
+  const configuredBase = process.env.AI_NOVEL_CLIENT_BASE?.trim();
+  if (!configuredBase || configuredBase === "/") {
+    return "/";
+  }
+  if (configuredBase === "relative") {
+    return "./";
+  }
+  return configuredBase.endsWith("/") ? configuredBase : configuredBase + "/";
+}
+
 const appVersion = resolveDesktopAppVersion();
 
 export default defineConfig({
-  base: isDesktopRelativeBaseBuild ? "./" : "/",
+  base: resolveClientBase(),
   plugins: [react()],
   define: {
     "import.meta.env.VITE_APP_VERSION": JSON.stringify(appVersion),

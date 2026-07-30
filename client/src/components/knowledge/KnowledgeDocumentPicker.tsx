@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { KnowledgeDocumentStatus } from "@ai-novel/shared/types/knowledge";
+import type { KnowledgeDocumentKind, KnowledgeDocumentStatus } from "@ai-novel/shared/types/knowledge";
 import { Link } from "react-router-dom";
 import { listKnowledgeDocuments } from "@/api/knowledge";
 import { queryKeys } from "@/api/queryKeys";
@@ -16,8 +16,10 @@ interface KnowledgeDocumentPickerProps {
   queryStatus?: KnowledgeDocumentStatus;
 }
 
-function formatDocumentKind(kind: "user_upload" | "analysis_published"): string {
-  return kind === "analysis_published" ? "拆书发布" : "上传文档";
+function formatDocumentKind(kind: KnowledgeDocumentKind): string {
+  if (kind === "analysis_published") return "拆书发布";
+  if (kind === "reference_import") return "参考书";
+  return "上传文档";
 }
 
 export default function KnowledgeDocumentPicker(props: KnowledgeDocumentPickerProps) {

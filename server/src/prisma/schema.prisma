@@ -75,6 +75,7 @@ enum KnowledgeDocumentStatus {
 enum KnowledgeDocumentKind {
   user_upload
   analysis_published
+  reference_import
 }
 
 enum KnowledgeIndexStatus {
@@ -3131,12 +3132,112 @@ model KnowledgeDocument {
   bookAnalyses           BookAnalysis[]
   publishedFromAnalyses  BookAnalysis[]           @relation("BookAnalysisPublishedDocument")
   continuationNovels     Novel[]                  @relation("NovelKnowledgeContinuation")
+  referenceBooks         ReferenceBook[]
   createdAt              DateTime                 @default(now())
   updatedAt              DateTime                 @updatedAt
 
   @@index([status, updatedAt])
   @@index([kind, updatedAt])
   @@index([title])
+}
+
+model ReferenceSearchJob {
+  id               String   @id @default(cuid())
+  authorsJson      String
+  status           String   @default("queued")
+  progress         Int      @default(0)
+  processedAuthors Int      @default(0)
+  totalAuthors     Int
+  resultJson       String   @default("[]")
+  lastError        String?
+  heartbeatAt      DateTime?
+  startedAt        DateTime?
+  finishedAt       DateTime?
+  expiresAt        DateTime
+  downloadJobs     ReferenceDownloadJob[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([status, updatedAt])
+  @@index([expiresAt])
+}
+
+model ReferenceBook {
+  id                  String   @id @default(cuid())
+  author              String
+  normalizedAuthor    String
+  title               String
+  normalizedTitle     String
+  category            String?
+  intro               String?
+  latestChapter       String?
+  publicationStatus   String?
+  wordCount           String?
+  chapterCount        Int?
+  fileStatus          String   @default("missing")
+  importStatus        String   @default("pending")
+  fileName            String?
+  filePath            String?
+  fileSize            Int?
+  fileChecksum        String?
+  knowledgeDocumentId String?
+  knowledgeDocument   KnowledgeDocument? @relation(fields: [knowledgeDocumentId], references: [id], onDelete: SetNull)
+  sources             ReferenceBookSource[]
+  downloadJobs        ReferenceDownloadJob[]
+  fileRemovedAt       DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([normalizedAuthor, normalizedTitle])
+  @@index([author, updatedAt])
+  @@index([fileStatus, importStatus])
+  @@index([knowledgeDocumentId])
+}
+
+model ReferenceBookSource {
+  id                 String   @id @default(cuid())
+  bookId             String
+  sourceId           Int
+  sourceName         String
+  url                String
+  priority           Int      @default(100)
+  availabilityStatus String   @default("available")
+  chapterCount       Int?
+  checkedAt          DateTime?
+  lastError          String?
+  book               ReferenceBook @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  downloadJobs       ReferenceDownloadJob[]
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([bookId, url])
+  @@index([bookId, priority])
+  @@index([sourceId, availabilityStatus])
+}
+
+model ReferenceDownloadJob {
+  id              String   @id @default(cuid())
+  bookId          String
+  searchJobId     String?
+  currentSourceId String?
+  status          String   @default("queued")
+  progress        Int      @default(0)
+  currentStage    String?
+  attemptCount    Int      @default(0)
+  maxAttempts     Int      @default(5)
+  lastError       String?
+  heartbeatAt     DateTime?
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  book            ReferenceBook @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  searchJob       ReferenceSearchJob? @relation(fields: [searchJobId], references: [id], onDelete: SetNull)
+  currentSource   ReferenceBookSource? @relation(fields: [currentSourceId], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([bookId, createdAt])
+  @@index([searchJobId])
 }
 
 model KnowledgeDocumentVersion {

@@ -11,7 +11,7 @@ const knowledgeService = new KnowledgeService();
 const documentChapterService = new DocumentChapterService();
 
 const documentStatusSchema = z.enum(["enabled", "disabled", "archived"]);
-const documentKindSchema = z.enum(["user_upload", "analysis_published"]);
+const documentKindSchema = z.enum(["user_upload", "analysis_published", "reference_import"]);
 
 const listDocumentsQuerySchema = z.object({
   keyword: z.string().trim().optional(),

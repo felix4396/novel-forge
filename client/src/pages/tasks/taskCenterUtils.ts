@@ -156,6 +156,12 @@ export function formatKind(kind: TaskKind): string {
   if (kind === "agent_run") {
     return "Agent 运行";
   }
+  if (kind === "reference_search") {
+    return "参考书搜索";
+  }
+  if (kind === "reference_download") {
+    return "参考书下载";
+  }
   return "图片生成";
 }
 

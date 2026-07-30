@@ -14,7 +14,7 @@ const router = Router();
 const autoDirectorFollowUpService = new AutoDirectorFollowUpService();
 const autoDirectorFollowUpActionExecutor = new AutoDirectorFollowUpActionExecutor();
 
-const kindSchema = z.enum(["book_analysis", "novel_pipeline", "knowledge_document", "image_generation", "agent_run", "novel_workflow", "style_extraction"]);
+const kindSchema = z.enum(["book_analysis", "novel_pipeline", "knowledge_document", "image_generation", "agent_run", "novel_workflow", "style_extraction", "reference_search", "reference_download"]);
 const statusSchema = z.enum(["queued", "running", "waiting_approval", "succeeded", "failed", "cancelled"]);
 
 const listQuerySchema = z.object({
