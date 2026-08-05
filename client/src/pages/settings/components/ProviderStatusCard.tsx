@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { AUTO_DIRECTOR_MOBILE_CLASSES } from "@/mobile/autoDirector";
+import { isLikelyEmbeddingModel } from "@/lib/llmSelection";
 import { ProviderRequestLimitSummary } from "./ProviderRequestLimitFields";
 import { formatBalanceAmount, formatBalanceTime } from "../settingsFormatters";
 
@@ -17,6 +18,7 @@ export interface ProviderCardViewModel {
   isBalanceRefreshing: boolean;
   canRefreshBalance: boolean;
   isReasoningUpdating: boolean;
+  isActiveUpdating: boolean;
   isTesting: boolean;
   testResult?: string;
 }
@@ -39,6 +41,89 @@ function getBalanceSummary(input: {
   return balance?.error ?? balance?.message ?? (provider.isConfigured ? "当前暂未获取余额信息。" : "请先配置 API Key。");
 }
 
+type ProviderConnectionState = "unconfigured" | "inactive" | "enabled" | "testing" | "connected" | "failed";
+
+function resolveConnectionState(input: {
+  provider: APIKeyStatus;
+  isTesting: boolean;
+  testResult?: string;
+}): ProviderConnectionState {
+  const { provider, isTesting, testResult } = input;
+  if (!provider.isConfigured || !provider.currentModel) {
+    return "unconfigured";
+  }
+  if (!provider.isActive) {
+    return "inactive";
+  }
+  if (isTesting) {
+    return "testing";
+  }
+  if (!testResult) {
+    return "enabled";
+  }
+  return testResult.startsWith("连接成功") ? "connected" : "failed";
+}
+
+function getConnectionBadgeLabel(state: ProviderConnectionState): string {
+  switch (state) {
+    case "connected":
+      return "连接正常";
+    case "failed":
+      return "连接失败";
+    case "testing":
+      return "测试中";
+    case "enabled":
+      return "已启用";
+    case "inactive":
+      return "未启用";
+    case "unconfigured":
+      return "未配置";
+  }
+}
+
+function getConnectionDescription(state: ProviderConnectionState): string {
+  switch (state) {
+    case "connected":
+      return "连接测试通过，可用于对应创作任务。";
+    case "failed":
+      return "连接测试失败，请检查模型、地址、密钥或本地服务。";
+    case "testing":
+      return "正在测试模型服务连通性。";
+    case "enabled":
+      return "配置已启用；点击测试连接确认服务是否可达。";
+    case "inactive":
+      return "配置已保存但未启用。";
+    case "unconfigured":
+      return "完成配置后可用于创作任务。";
+  }
+}
+
+function getConnectionBadgeClass(state: ProviderConnectionState): string {
+  if (state === "connected") {
+    return "bg-emerald-600 text-white hover:bg-emerald-600";
+  }
+  if (state === "failed") {
+    return "bg-red-600 text-white hover:bg-red-600";
+  }
+  if (state === "enabled" || state === "testing") {
+    return "bg-sky-600 text-white hover:bg-sky-600";
+  }
+  return "";
+}
+
+function getCardStateClass(state: ProviderConnectionState): string {
+  if (state === "connected") {
+    return "border-emerald-500/40 bg-emerald-50/50 dark:bg-emerald-950/20";
+  }
+  if (state === "failed") {
+    return "border-red-500/40 bg-red-50/50 dark:bg-red-950/20";
+  }
+  if (state === "enabled" || state === "testing") {
+    return "border-sky-500/35 bg-sky-50/40 dark:bg-sky-950/15";
+  }
+  return "border-border";
+}
+
 export default function ProviderStatusCard(props: {
   item: ProviderCardViewModel;
   onOpenConfig: (provider: LLMProvider) => void;
@@ -46,6 +131,7 @@ export default function ProviderStatusCard(props: {
   onRefreshModels: (provider: LLMProvider) => void;
   onRefreshBalance: (provider: LLMProvider) => void;
   onToggleReasoning: (provider: LLMProvider, reasoningEnabled: boolean) => void;
+  onToggleActive: (provider: LLMProvider, isActive: boolean) => void;
   isRefreshingModels: boolean;
 }) {
   const {
@@ -55,6 +141,7 @@ export default function ProviderStatusCard(props: {
     onRefreshModels,
     onRefreshBalance,
     onToggleReasoning,
+    onToggleActive,
     isRefreshingModels,
   } = props;
   const { provider, balance } = item;
@@ -64,15 +151,34 @@ export default function ProviderStatusCard(props: {
     ? provider.currentImageModel || provider.defaultImageModel || "未设置"
     : "不支持图像生成";
   const visibleModels = modelsOpen ? provider.models : provider.models.slice(0, 8);
-  const canUseProvider = provider.isConfigured && provider.isActive && Boolean(provider.currentModel);
-  const testDisabledReason = provider.isConfigured ? "" : "配置 API Key 后可以测试连接。";
+  const isEmbeddingModel = isLikelyEmbeddingModel(provider.currentModel);
+  const connectionState = resolveConnectionState({
+    provider,
+    isTesting: item.isTesting,
+    testResult: item.testResult,
+  });
+  const isConfigured = connectionState !== "unconfigured";
+  const testDisabledReason = !provider.isConfigured
+    ? "配置 API Key 后可以测试连接。"
+    : isEmbeddingModel
+      ? "当前是向量模型，请在知识库向量设置中检查 embedding 连通性。"
+      : "";
   const refreshDisabledReason = provider.isConfigured ? "" : "配置 API Key 后可以刷新模型列表。";
+  const activeToggleDisabled = item.isActiveUpdating || (!provider.isConfigured && !provider.isActive);
+  const activeToggleTitle = !provider.isConfigured && !provider.isActive
+    ? "请先完成厂商配置。"
+    : provider.isActive
+      ? "停用后不会作为普通模型厂商参与选择。"
+      : "启用后可作为普通模型厂商参与选择。";
+  const connectionDescription = isEmbeddingModel
+    ? "当前模型是向量模型；请在知识库向量设置中检查 embedding 连通性。"
+    : getConnectionDescription(connectionState);
 
   return (
     <div
       className={cn(
         "min-w-0 rounded-md border p-3 transition-colors",
-        canUseProvider ? "border-emerald-500/40 bg-emerald-50/50 dark:bg-emerald-950/20" : "border-border",
+        getCardStateClass(connectionState),
       )}
     >
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -82,15 +188,32 @@ export default function ProviderStatusCard(props: {
             {provider.kind === "custom" ? <Badge variant="outline">自定义</Badge> : null}
           </div>
           <div className={`text-xs text-muted-foreground ${AUTO_DIRECTOR_MOBILE_CLASSES.wrapText}`}>
-            {canUseProvider ? "可用于创作任务。" : "完成配置后可用于创作任务。"}
+            {connectionDescription}
           </div>
         </div>
         <Badge
-          variant={canUseProvider ? "default" : "outline"}
-          className={canUseProvider ? "bg-emerald-600 text-white hover:bg-emerald-600" : ""}
+          variant={isConfigured ? "default" : "outline"}
+          className={getConnectionBadgeClass(connectionState)}
         >
-          {canUseProvider ? "可用" : provider.isConfigured ? "已配置" : "未配置"}
+          {getConnectionBadgeLabel(connectionState)}
         </Badge>
+      </div>
+
+      <div className="mb-3 flex flex-col gap-2 rounded-md border bg-background/70 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 space-y-1">
+          <div className="text-xs font-medium text-muted-foreground">厂商启用</div>
+          <div className={`text-xs text-muted-foreground ${AUTO_DIRECTOR_MOBILE_CLASSES.wrapText}`}>
+            {provider.isActive ? "当前配置已启用。" : "当前配置未启用，不会作为普通模型厂商参与选择。"}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2" title={activeToggleTitle}>
+          <span className="text-xs text-muted-foreground">{provider.isActive ? "已启用" : "未启用"}</span>
+          <Switch
+            checked={provider.isActive}
+            disabled={activeToggleDisabled}
+            onCheckedChange={(checked) => onToggleActive(provider.provider, checked)}
+          />
+        </div>
       </div>
 
       <div className="mb-3 grid min-w-0 gap-2 text-sm md:grid-cols-2">
@@ -132,7 +255,7 @@ export default function ProviderStatusCard(props: {
           className="w-full sm:w-auto"
           title={testDisabledReason}
           onClick={() => onTest(provider)}
-          disabled={!provider.isConfigured || item.isTesting}
+          disabled={!provider.isConfigured || isEmbeddingModel || item.isTesting}
         >
           {item.isTesting ? "测试中..." : "测试连接"}
         </Button>

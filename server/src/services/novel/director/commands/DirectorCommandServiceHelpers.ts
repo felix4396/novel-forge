@@ -101,8 +101,8 @@ export function parsePayload(payloadJson: string | null): DirectorCommandPayload
 }
 
 export function resolveNumberEnv(name: string, fallback: number): number {
-  const value = Number(process.env[name]);
-  return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
+  void name;
+  return fallback;
 }
 
 export function resourceClassForCommand(commandType: string): string {

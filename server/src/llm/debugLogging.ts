@@ -15,6 +15,7 @@ interface LLMDebugMeta {
   model: string;
   temperature: number;
   maxTokens?: number;
+  reasoningEffort?: string;
   timeoutMs?: number;
   taskType?: TaskType;
   baseURL?: string;

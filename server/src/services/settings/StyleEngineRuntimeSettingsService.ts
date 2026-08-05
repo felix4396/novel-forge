@@ -34,21 +34,6 @@ function parseTimeoutMs(
   return clampInt(Number(rawValue ?? ""), fallback, min, max);
 }
 
-function getDefaultStyleExtractionTimeoutMs(): number {
-  const globalTimeoutMs = parseTimeoutMs(
-    process.env.LLM_REQUEST_TIMEOUT_MS,
-    180_000,
-    30_000,
-    900_000,
-  );
-  return parseTimeoutMs(
-    process.env.STYLE_EXTRACTION_LLM_TIMEOUT_MS,
-    Math.max(globalTimeoutMs, DEFAULT_STYLE_EXTRACTION_TIMEOUT_MS),
-    MIN_STYLE_EXTRACTION_TIMEOUT_MS,
-    MAX_STYLE_EXTRACTION_TIMEOUT_MS,
-  );
-}
-
 function buildSettings(styleExtractionTimeoutMs: number): StyleEngineRuntimeSettings {
   return {
     styleExtractionTimeoutMs,
@@ -59,7 +44,7 @@ function buildSettings(styleExtractionTimeoutMs: number): StyleEngineRuntimeSett
 }
 
 export async function getStyleEngineRuntimeSettings(): Promise<StyleEngineRuntimeSettings> {
-  const fallback = getDefaultStyleExtractionTimeoutMs();
+  const fallback = DEFAULT_STYLE_EXTRACTION_TIMEOUT_MS;
   try {
     const record = await prisma.appSetting.findUnique({
       where: { key: STYLE_EXTRACTION_TIMEOUT_MS_KEY },

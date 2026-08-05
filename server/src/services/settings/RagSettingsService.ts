@@ -1,14 +1,12 @@
 import { prisma } from "../../db/prisma";
 import { ragConfig, asEmbeddingProvider, type EmbeddingProvider } from "../../config/rag";
 import {
-  getProviderEnvApiKey,
   isBuiltInProvider,
   providerRequiresApiKey,
   PROVIDERS,
   SUPPORTED_PROVIDERS,
 } from "../../llm/providers";
 import {
-  getLegacyProviderEmbeddingModelEnv,
   isMissingTableError,
   normalizeOptionalText,
   shouldPreserveLegacyQdrantCollection,
@@ -76,12 +74,12 @@ export interface SaveRagEmbeddingSettingsResult {
   shouldReindex: boolean;
 }
 
-function normalizeEmbeddingModel(value: string | undefined, provider: EmbeddingProvider = ragConfig.embeddingProvider): string {
+function normalizeEmbeddingModel(value: string | undefined): string {
   const normalized = value?.trim();
   if (normalized && normalized.length > 0) {
     return normalized;
   }
-  return getLegacyProviderEmbeddingModelEnv(provider) ?? ragConfig.embeddingModel;
+  return ragConfig.embeddingModel;
 }
 
 function normalizeCollectionMode(value: string | undefined, fallback: RagEmbeddingCollectionMode): RagEmbeddingCollectionMode {
@@ -171,13 +169,13 @@ async function getDefaultSettings(): Promise<RagEmbeddingSettings> {
   const collectionTag = normalizeCollectionTag("kb");
   const suggestedCollectionName = buildAutoCollectionName(
     ragConfig.embeddingProvider,
-    normalizeEmbeddingModel(ragConfig.embeddingModel, ragConfig.embeddingProvider),
+    normalizeEmbeddingModel(ragConfig.embeddingModel),
     collectionTag,
   );
   const shouldPreserveLegacyCollection = await shouldPreserveLegacyQdrantCollection();
   return {
     embeddingProvider: ragConfig.embeddingProvider,
-    embeddingModel: normalizeEmbeddingModel(ragConfig.embeddingModel, ragConfig.embeddingProvider),
+    embeddingModel: normalizeEmbeddingModel(ragConfig.embeddingModel),
     collectionVersion: ragConfig.embeddingVersion,
     collectionMode: shouldPreserveLegacyCollection || ragConfig.qdrantCollection !== DEFAULT_RAG_COLLECTION_NAME
       ? "manual"
@@ -208,7 +206,6 @@ export async function getRagEmbeddingSettings(): Promise<RagEmbeddingSettings> {
     const embeddingProvider = asEmbeddingProvider(valueMap.get(RAG_EMBEDDING_PROVIDER_KEY) ?? defaults.embeddingProvider);
     const embeddingModel = normalizeEmbeddingModel(
       valueMap.get(RAG_EMBEDDING_MODEL_KEY) ?? defaults.embeddingModel,
-      embeddingProvider,
     );
     const collectionMode = normalizeCollectionMode(
       valueMap.get(RAG_EMBEDDING_COLLECTION_MODE_KEY),
@@ -272,7 +269,7 @@ export async function getRagEmbeddingSettings(): Promise<RagEmbeddingSettings> {
 export async function saveRagEmbeddingSettings(input: RagEmbeddingSettingsInput): Promise<SaveRagEmbeddingSettingsResult> {
   const previous = await getRagEmbeddingSettings();
   const embeddingProvider = asEmbeddingProvider(input.embeddingProvider);
-  const embeddingModel = normalizeEmbeddingModel(input.embeddingModel, embeddingProvider);
+  const embeddingModel = normalizeEmbeddingModel(input.embeddingModel);
   const collectionMode = normalizeCollectionMode(input.collectionMode, previous.collectionMode);
   const collectionTag = normalizeCollectionTag(input.collectionTag || previous.collectionTag);
   const suggestedCollectionName = buildAutoCollectionName(embeddingProvider, embeddingModel, collectionTag);
@@ -414,31 +411,25 @@ export async function getRagEmbeddingProviders(): Promise<RagEmbeddingProviderSt
     ]);
     return providers.map((provider) => {
       const item = itemMap.get(provider);
-      const envApiKey = isBuiltInProvider(provider)
-        ? normalizeOptionalText(getProviderEnvApiKey(provider))
-        : undefined;
-      const configuredSecret = normalizeOptionalText(item?.key ?? undefined) ?? envApiKey;
+      const configuredSecret = normalizeOptionalText(item?.key ?? undefined);
       const configuredBaseUrl = normalizeOptionalText(item?.baseURL ?? undefined);
       const canRunWithoutApiKey = !isBuiltInProvider(provider) || !providerRequiresApiKey(provider);
       return {
         provider,
         name: getProviderDisplayName(provider, item?.displayName),
-        isConfigured: Boolean(configuredSecret) || (canRunWithoutApiKey && Boolean(configuredBaseUrl || isBuiltInProvider(provider))),
-        isActive: item?.isActive ?? (Boolean(envApiKey) || canRunWithoutApiKey),
+        isConfigured: Boolean(configuredSecret)
+          || (canRunWithoutApiKey && Boolean(configuredBaseUrl || (item?.isActive && isBuiltInProvider(provider)))),
+        isActive: item?.isActive ?? false,
       };
     });
   } catch (error) {
     if (isMissingTableError(error)) {
-      return builtInProviders.map((provider) => {
-        const envApiKey = normalizeOptionalText(getProviderEnvApiKey(provider));
-        const canRunWithoutApiKey = !providerRequiresApiKey(provider);
-        return {
-          provider,
-          name: PROVIDERS[provider].name,
-          isConfigured: Boolean(envApiKey) || canRunWithoutApiKey,
-          isActive: Boolean(envApiKey) || canRunWithoutApiKey,
-        };
-      });
+      return builtInProviders.map((provider) => ({
+        provider,
+        name: PROVIDERS[provider].name,
+        isConfigured: false,
+        isActive: false,
+      }));
     }
     throw error;
   }

@@ -1689,6 +1689,7 @@ model ModelRouteConfig {
   model                    String
   temperature              Float   @default(0.7)
   maxTokens                Int?
+  reasoningEffort          String  @default("auto")
   requestProtocol          String  @default("auto")
   structuredResponseFormat String  @default("auto")
   createdAt                DateTime @default(now())

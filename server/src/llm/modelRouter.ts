@@ -1,5 +1,6 @@
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import type {
+  ModelRouteReasoningEffort,
   ModelRouteRequestProtocol,
   ModelRouteStructuredResponseFormat,
   ModelRouteTaskType,
@@ -46,6 +47,7 @@ export interface ResolvedModel {
   model: string;
   temperature: number;
   maxTokens?: number;
+  reasoningEffort: ModelRouteReasoningEffort;
   requestProtocol: ModelRouteRequestProtocol;
   structuredResponseFormat: ModelRouteStructuredResponseFormat;
   routeKey: ModelRouteTaskType | "default";
@@ -63,6 +65,7 @@ const DEFAULT_ROUTES: Record<ModelRouteTaskType | "default", Omit<ResolvedModel,
     provider: "deepseek",
     model: PROVIDERS.deepseek.defaultModel,
     temperature: 0.3,
+    reasoningEffort: "auto",
     requestProtocol: "auto",
     structuredResponseFormat: "auto",
   },
@@ -70,6 +73,7 @@ const DEFAULT_ROUTES: Record<ModelRouteTaskType | "default", Omit<ResolvedModel,
     provider: "deepseek",
     model: PROVIDERS.deepseek.defaultModel,
     temperature: 0.8,
+    reasoningEffort: "auto",
     requestProtocol: "auto",
     structuredResponseFormat: "auto",
   },
@@ -77,6 +81,7 @@ const DEFAULT_ROUTES: Record<ModelRouteTaskType | "default", Omit<ResolvedModel,
     provider: "deepseek",
     model: PROVIDERS.deepseek.defaultModel,
     temperature: 0.2,
+    reasoningEffort: "auto",
     requestProtocol: "auto",
     structuredResponseFormat: "auto",
   },
@@ -84,6 +89,7 @@ const DEFAULT_ROUTES: Record<ModelRouteTaskType | "default", Omit<ResolvedModel,
     provider: "deepseek",
     model: PROVIDERS.deepseek.defaultModel,
     temperature: 0.2,
+    reasoningEffort: "auto",
     requestProtocol: "auto",
     structuredResponseFormat: "auto",
   },
@@ -91,6 +97,7 @@ const DEFAULT_ROUTES: Record<ModelRouteTaskType | "default", Omit<ResolvedModel,
     provider: "deepseek",
     model: PROVIDERS.deepseek.defaultModel,
     temperature: 0.1,
+    reasoningEffort: "auto",
     requestProtocol: "auto",
     structuredResponseFormat: "auto",
   },
@@ -98,6 +105,7 @@ const DEFAULT_ROUTES: Record<ModelRouteTaskType | "default", Omit<ResolvedModel,
     provider: "deepseek",
     model: PROVIDERS.deepseek.defaultModel,
     temperature: 0.4,
+    reasoningEffort: "auto",
     requestProtocol: "auto",
     structuredResponseFormat: "auto",
   },
@@ -105,6 +113,7 @@ const DEFAULT_ROUTES: Record<ModelRouteTaskType | "default", Omit<ResolvedModel,
     provider: "deepseek",
     model: PROVIDERS.deepseek.defaultModel,
     temperature: 0.2,
+    reasoningEffort: "auto",
     requestProtocol: "auto",
     structuredResponseFormat: "auto",
   },
@@ -112,6 +121,7 @@ const DEFAULT_ROUTES: Record<ModelRouteTaskType | "default", Omit<ResolvedModel,
     provider: "deepseek",
     model: PROVIDERS.deepseek.defaultModel,
     temperature: 0.1,
+    reasoningEffort: "auto",
     requestProtocol: "auto",
     structuredResponseFormat: "auto",
   },
@@ -119,6 +129,7 @@ const DEFAULT_ROUTES: Record<ModelRouteTaskType | "default", Omit<ResolvedModel,
     provider: "deepseek",
     model: PROVIDERS.deepseek.defaultModel,
     temperature: 0.2,
+    reasoningEffort: "auto",
     requestProtocol: "auto",
     structuredResponseFormat: "auto",
   },
@@ -126,6 +137,7 @@ const DEFAULT_ROUTES: Record<ModelRouteTaskType | "default", Omit<ResolvedModel,
     provider: "deepseek",
     model: PROVIDERS.deepseek.defaultModel,
     temperature: 0.2,
+    reasoningEffort: "auto",
     requestProtocol: "auto",
     structuredResponseFormat: "auto",
   },
@@ -133,6 +145,7 @@ const DEFAULT_ROUTES: Record<ModelRouteTaskType | "default", Omit<ResolvedModel,
     provider: "deepseek",
     model: PROVIDERS.deepseek.defaultModel,
     temperature: 0.7,
+    reasoningEffort: "auto",
     requestProtocol: "auto",
     structuredResponseFormat: "auto",
   },
@@ -140,6 +153,7 @@ const DEFAULT_ROUTES: Record<ModelRouteTaskType | "default", Omit<ResolvedModel,
     provider: "deepseek",
     model: PROVIDERS.deepseek.defaultModel,
     temperature: 0.7,
+    reasoningEffort: "auto",
     requestProtocol: "auto",
     structuredResponseFormat: "auto",
   },
@@ -186,6 +200,20 @@ export function normalizeStructuredResponseFormat(value?: string | null): ModelR
   return "auto";
 }
 
+export function normalizeReasoningEffort(value?: string | null): ModelRouteReasoningEffort {
+  if (
+    value === "none"
+    || value === "minimal"
+    || value === "low"
+    || value === "medium"
+    || value === "high"
+    || value === "xhigh"
+  ) {
+    return value;
+  }
+  return "auto";
+}
+
 function normalizeRoutePreferences(input: {
   requestProtocol?: string | null;
   structuredResponseFormat?: string | null;
@@ -216,6 +244,7 @@ function applyOverrides(
     model?: string;
     temperature?: number;
     maxTokens?: number;
+    reasoningEffort?: ModelRouteReasoningEffort;
     requestProtocol?: ModelRouteRequestProtocol;
     structuredResponseFormat?: ModelRouteStructuredResponseFormat;
   },
@@ -226,6 +255,7 @@ function applyOverrides(
     ...(userOverride?.model != null && { model: userOverride.model }),
     ...(userOverride?.temperature != null && { temperature: userOverride.temperature }),
     ...(userOverride?.maxTokens != null && { maxTokens: userOverride.maxTokens }),
+    ...(userOverride?.reasoningEffort != null && { reasoningEffort: userOverride.reasoningEffort }),
     ...(userOverride?.requestProtocol != null && { requestProtocol: userOverride.requestProtocol }),
     ...(userOverride?.structuredResponseFormat != null && {
       structuredResponseFormat: userOverride.structuredResponseFormat,
@@ -265,6 +295,7 @@ export async function resolveModel(
     model?: string;
     temperature?: number;
     maxTokens?: number;
+    reasoningEffort?: ModelRouteReasoningEffort;
     requestProtocol?: ModelRouteRequestProtocol;
     structuredResponseFormat?: ModelRouteStructuredResponseFormat;
   },
@@ -287,6 +318,7 @@ export async function resolveModel(
         model: row.model,
         temperature: row.temperature,
         maxTokens: normalizeMaxTokens(provider, row.maxTokens ?? undefined),
+        reasoningEffort: normalizeReasoningEffort("reasoningEffort" in row ? row.reasoningEffort : null),
         ...routePreferences,
         routeKey: normalizedTaskType,
         routeDegraded: false,
@@ -311,6 +343,7 @@ export async function listModelRouteConfigs(): Promise<Array<{
   model: string;
   temperature: number;
   maxTokens: number | null;
+  reasoningEffort: ModelRouteReasoningEffort;
   requestProtocol: ModelRouteRequestProtocol;
   structuredResponseFormat: ModelRouteStructuredResponseFormat;
 }>> {
@@ -330,6 +363,7 @@ export async function listModelRouteConfigs(): Promise<Array<{
         model: r.model,
         temperature: r.temperature,
         maxTokens: normalizeMaxTokens(provider, r.maxTokens ?? undefined) ?? null,
+        reasoningEffort: normalizeReasoningEffort("reasoningEffort" in r ? r.reasoningEffort : null),
         ...routePreferences,
       };
     });
@@ -345,6 +379,7 @@ export async function upsertModelRouteConfig(
     model: string;
     temperature?: number;
     maxTokens?: number | null;
+    reasoningEffort?: string | null;
     requestProtocol?: string | null;
     structuredResponseFormat?: string | null;
   },
@@ -359,6 +394,7 @@ export async function upsertModelRouteConfig(
     requestProtocol: data.requestProtocol,
     structuredResponseFormat: data.structuredResponseFormat,
   });
+  const reasoningEffort = normalizeReasoningEffort(data.reasoningEffort);
   await prisma.modelRouteConfig.upsert({
     where: { taskType: normalizedTaskType },
     create: {
@@ -367,6 +403,7 @@ export async function upsertModelRouteConfig(
       model: data.model,
       temperature: data.temperature ?? 0.7,
       maxTokens: normalizedMaxTokens,
+      reasoningEffort,
       requestProtocol,
       structuredResponseFormat,
     },
@@ -375,6 +412,7 @@ export async function upsertModelRouteConfig(
       model: data.model,
       temperature: data.temperature ?? 0.7,
       maxTokens: normalizedMaxTokens,
+      reasoningEffort,
       requestProtocol,
       structuredResponseFormat,
     },

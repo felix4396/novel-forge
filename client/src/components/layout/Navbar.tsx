@@ -1,5 +1,4 @@
 import { useLocation } from "react-router-dom";
-import LLMSelector from "@/components/common/LLMSelector";
 import AppVersionBadge from "@/components/layout/AppVersionBadge";
 import DesktopBrandMark from "@/components/layout/DesktopBrandMark";
 import LiveExecutionDialog from "@/components/liveExecution/LiveExecutionDialog";
@@ -48,9 +47,6 @@ export default function Navbar(props: NavbarProps) {
           </Button>
         ) : null}
         <LiveExecutionDialog />
-        <div className={useMobileAutoDirectorShell ? AUTO_DIRECTOR_MOBILE_CLASSES.navbarModelSelector : undefined}>
-          <LLMSelector compact showBadge={false} showHelperText={false} />
-        </div>
       </div>
     </header>
   );

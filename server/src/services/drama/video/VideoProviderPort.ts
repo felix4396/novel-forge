@@ -30,7 +30,7 @@ export class MockVideoProvider implements VideoProviderPort {
   readonly label = "模拟视频通道";
   readonly description = "用于联调视频生成链路的本地模拟 provider，不会生成真实视频。";
   readonly supportsRefImages = true;
-  readonly costPerSecond = normalizeCostValue(process.env.DRAMA_VIDEO_MOCK_COST_PER_SECOND);
+  readonly costPerSecond = 0;
   readonly currency = readCostCurrency();
 
   async createTask(input: VideoGenerationRequest): Promise<VideoGenerationResult> {
@@ -86,7 +86,7 @@ function normalizeCostValue(value: unknown): number {
 }
 
 function readCostCurrency(): string {
-  return process.env.DRAMA_COST_CURRENCY?.trim() || "CNY";
+  return "CNY";
 }
 
 function normalizeBooleanFlag(value: unknown): boolean {
@@ -249,19 +249,3 @@ class VideoProviderRegistry {
 
 export const videoProviderRegistry = new VideoProviderRegistry();
 videoProviderRegistry.register(new MockVideoProvider());
-
-const httpCreateUrl = process.env.DRAMA_VIDEO_HTTP_CREATE_URL?.trim();
-if (httpCreateUrl) {
-  videoProviderRegistry.register(new HttpVideoProvider({
-    provider: process.env.DRAMA_VIDEO_HTTP_PROVIDER_ID?.trim() || "http",
-    label: process.env.DRAMA_VIDEO_HTTP_PROVIDER_LABEL?.trim() || "HTTP 视频通道",
-    description: process.env.DRAMA_VIDEO_HTTP_PROVIDER_DESCRIPTION?.trim() || "通过环境变量配置的外部视频生成服务。",
-    createUrl: httpCreateUrl,
-    statusUrl: process.env.DRAMA_VIDEO_HTTP_STATUS_URL?.trim() || undefined,
-    apiKey: process.env.DRAMA_VIDEO_HTTP_API_KEY?.trim() || undefined,
-    timeoutMs: normalizeTimeoutMs(process.env.DRAMA_VIDEO_HTTP_TIMEOUT_MS),
-    supportsRefImages: normalizeBooleanFlag(process.env.DRAMA_VIDEO_HTTP_SUPPORTS_REF_IMAGES),
-    costPerSecond: normalizeCostValue(process.env.DRAMA_VIDEO_HTTP_COST_PER_SECOND),
-    currency: process.env.DRAMA_VIDEO_HTTP_COST_CURRENCY?.trim() || readCostCurrency(),
-  }));
-}

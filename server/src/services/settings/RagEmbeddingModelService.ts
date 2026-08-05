@@ -2,9 +2,6 @@ import { prisma } from "../../db/prisma";
 import { type EmbeddingProvider } from "../../config/rag";
 import { getProviderModels } from "../../llm/modelCatalog";
 import {
-  getProviderEnvApiKey,
-  getProviderEnvBaseUrl,
-  getProviderEnvModel,
   isBuiltInProvider,
   providerRequiresApiKey,
   PROVIDERS,
@@ -102,31 +99,21 @@ async function resolveProviderSecret(provider: EmbeddingProvider): Promise<Provi
     const dbApiKey = record?.isActive ? record.key?.trim() : undefined;
     const dbBaseURL = record?.isActive ? record.baseURL?.trim() : undefined;
     const dbModel = record?.isActive ? record.model?.trim() : undefined;
-    const envApiKey = getProviderEnvApiKey(provider)?.trim();
-    const envBaseURL = getProviderEnvBaseUrl(provider)?.trim();
-    const envModel = getProviderEnvModel(provider)?.trim();
     const canRunWithoutApiKey = !isBuiltInProvider(provider) || !providerRequiresApiKey(provider);
     return {
-      apiKey: dbApiKey || envApiKey,
-      baseURL: dbBaseURL || envBaseURL,
-      model: dbModel || envModel,
+      apiKey: dbApiKey,
+      baseURL: dbBaseURL,
+      model: dbModel,
       displayName: record?.displayName ?? null,
-      isConfigured: Boolean(dbApiKey || envApiKey) || (canRunWithoutApiKey && Boolean(dbBaseURL || envBaseURL || isBuiltInProvider(provider))),
-      isActive: record?.isActive ?? (Boolean(envApiKey) || canRunWithoutApiKey),
+      isConfigured: Boolean(dbApiKey) || (canRunWithoutApiKey && Boolean(dbBaseURL || (record?.isActive && isBuiltInProvider(provider)))),
+      isActive: record?.isActive ?? false,
     };
   } catch (error) {
     if (isMissingTableError(error)) {
-      const envApiKey = getProviderEnvApiKey(provider)?.trim();
-      const envBaseURL = getProviderEnvBaseUrl(provider)?.trim();
-      const envModel = getProviderEnvModel(provider)?.trim();
-      const canRunWithoutApiKey = !isBuiltInProvider(provider) || !providerRequiresApiKey(provider);
       return {
-        apiKey: envApiKey,
-        baseURL: envBaseURL,
-        model: envModel,
         displayName: null,
-        isConfigured: Boolean(envApiKey) || (canRunWithoutApiKey && Boolean(envBaseURL || isBuiltInProvider(provider))),
-        isActive: Boolean(envApiKey) || canRunWithoutApiKey,
+        isConfigured: false,
+        isActive: false,
       };
     }
     throw error;

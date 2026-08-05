@@ -1,9 +1,9 @@
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import {
+  getProviderDefaultBaseUrl,
   isBuiltInProvider,
   providerRequiresApiKey,
   PROVIDERS,
-  resolveProviderBaseUrl,
 } from "./providers";
 
 interface ModelCacheItem {
@@ -40,7 +40,7 @@ function getFallbackModels(provider: LLMProvider, options: GetProviderModelsOpti
 }
 
 function getCacheKey(provider: LLMProvider, baseURL?: string): string {
-  const resolvedBaseURL = resolveProviderBaseUrl(provider, baseURL, baseURL) ?? "";
+  const resolvedBaseURL = baseURL?.trim() || getProviderDefaultBaseUrl(provider) || "";
   return `${provider}::${resolvedBaseURL}`;
 }
 
@@ -120,7 +120,7 @@ function buildHeaders(provider: LLMProvider, apiKey?: string): Record<string, st
 
   if (provider === "anthropic") {
     headers["x-api-key"] = apiKey;
-    headers["anthropic-version"] = process.env.ANTHROPIC_VERSION ?? "2023-06-01";
+    headers["anthropic-version"] = "2023-06-01";
     return headers;
   }
 
@@ -164,7 +164,7 @@ async function fetchProviderModels(
   apiKey?: string,
   customBaseURL?: string,
 ): Promise<string[]> {
-  const baseURL = resolveProviderBaseUrl(provider, customBaseURL, customBaseURL);
+  const baseURL = customBaseURL?.trim() || getProviderDefaultBaseUrl(provider);
   if (!baseURL) {
     throw new Error("未配置可用的 API URL。");
   }
@@ -197,7 +197,7 @@ export async function getProviderModels(
   }
 
   const normalizedApiKey = options.apiKey?.trim();
-  const allowAnonymous = options.allowAnonymous ?? !providerRequiresApiKey(provider);
+  const allowAnonymous = options.allowAnonymous ?? false;
   const canFetchRemotely = normalizedApiKey || allowAnonymous;
   if (!canFetchRemotely) {
     return fallback;

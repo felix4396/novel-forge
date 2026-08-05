@@ -19,6 +19,10 @@ function assertContains(source, expected, message) {
   assert.ok(source.includes(expected), message);
 }
 
+function assertNotContains(source, expected, message) {
+  assert.ok(!source.includes(expected), message);
+}
+
 function assertImportsMobileContracts(source, message) {
   assertContains(source, "@/mobile/autoDirector", message);
 }
@@ -88,10 +92,10 @@ test("auto-director follow-up center uses mobile contracts for single-column non
     "shouldUseAutoDirectorMobileFullWidthContent",
     "navbar mobile shell changes should be scoped by the auto-director route opt-in",
   );
-  assertContains(
+  assertNotContains(
     navbar,
-    "AUTO_DIRECTOR_MOBILE_CLASSES.navbarModelSelector",
-    "the global model selector should not force auto-director target pages wider than a phone viewport",
+    "LLMSelector",
+    "navbar should not expose a global model selector because task-level model routes own generation model choice",
   );
   assertContains(
     navbar,

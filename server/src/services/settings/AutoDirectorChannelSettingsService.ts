@@ -77,7 +77,7 @@ function hasOwn(input: object, key: string): boolean {
 }
 
 function getDefaultBaseUrl(): string {
-  return trimText(process.env.APP_BASE_URL) || trimText(process.env.CORS_ORIGIN) || "";
+  return "";
 }
 
 function getConfiguredText(entries: Map<string, string>, key: string, fallback: string): string {
@@ -110,16 +110,16 @@ function buildDefaults(): AutoDirectorChannelSettings {
   return {
     baseUrl: getDefaultBaseUrl(),
     dingtalk: {
-      webhookUrl: trimText(process.env.AUTO_DIRECTOR_DINGTALK_WEBHOOK_URL),
-      callbackToken: trimText(process.env.AUTO_DIRECTOR_DINGTALK_CALLBACK_TOKEN),
-      operatorMapJson: trimText(process.env.AUTO_DIRECTOR_DINGTALK_OPERATOR_MAP_JSON),
-      eventTypes: parseEventTypes(process.env.AUTO_DIRECTOR_DINGTALK_EVENT_TYPES),
+      webhookUrl: "",
+      callbackToken: "",
+      operatorMapJson: "",
+      eventTypes: parseEventTypes(undefined),
     },
     wecom: {
-      webhookUrl: trimText(process.env.AUTO_DIRECTOR_WECOM_WEBHOOK_URL),
-      callbackToken: trimText(process.env.AUTO_DIRECTOR_WECOM_CALLBACK_TOKEN),
-      operatorMapJson: trimText(process.env.AUTO_DIRECTOR_WECOM_OPERATOR_MAP_JSON),
-      eventTypes: parseEventTypes(process.env.AUTO_DIRECTOR_WECOM_EVENT_TYPES),
+      webhookUrl: "",
+      callbackToken: "",
+      operatorMapJson: "",
+      eventTypes: parseEventTypes(undefined),
     },
   };
 }

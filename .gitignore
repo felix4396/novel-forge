@@ -26,6 +26,7 @@ server/src/prisma/dev.db-journal
 .histyory/
 .logs/
 .tmp/
+.local/
 .codegraph/
 .trae/
 server/.tmp/

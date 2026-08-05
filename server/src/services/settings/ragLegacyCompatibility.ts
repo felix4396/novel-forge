@@ -1,5 +1,4 @@
 import { prisma } from "../../db/prisma";
-import type { EmbeddingProvider } from "../../config/rag";
 
 export function isMissingTableError(error: unknown): boolean {
   return (
@@ -16,17 +15,6 @@ export function normalizeOptionalText(value: string | null | undefined): string 
   }
   const trimmed = value.trim();
   return trimmed || undefined;
-}
-
-export function getLegacyProviderEmbeddingModelEnv(provider: EmbeddingProvider): string | undefined {
-  if (provider === "siliconflow") {
-    return normalizeOptionalText(process.env.SILICONFLOW_EMBEDDING_MODEL);
-  }
-  return normalizeOptionalText(process.env.OPENAI_EMBEDDING_MODEL);
-}
-
-export function hasExplicitLegacyQdrantCollectionEnv(): boolean {
-  return normalizeOptionalText(process.env.QDRANT_COLLECTION) !== undefined;
 }
 
 export async function hasLegacyKnowledgeData(): Promise<boolean> {
@@ -46,8 +34,5 @@ export async function hasLegacyKnowledgeData(): Promise<boolean> {
 }
 
 export async function shouldPreserveLegacyQdrantCollection(): Promise<boolean> {
-  if (hasExplicitLegacyQdrantCollectionEnv()) {
-    return true;
-  }
   return hasLegacyKnowledgeData();
 }

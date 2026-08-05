@@ -25,6 +25,7 @@ export interface ProviderBalanceStatus {
 interface ProviderBalanceInput {
   provider: LLMProvider;
   apiKey?: string | null;
+  baseURL?: string | null;
 }
 
 function nowIso(): string {
@@ -113,8 +114,8 @@ async function fetchJson(url: string, init: RequestInit): Promise<unknown> {
   }
 }
 
-async function fetchDeepSeekBalance(apiKey: string): Promise<ProviderBalanceStatus> {
-  const baseURL = normalizeBaseUrl(process.env.DEEPSEEK_BASE_URL ?? PROVIDERS.deepseek.baseURL);
+async function fetchDeepSeekBalance(apiKey: string, configuredBaseURL?: string | null): Promise<ProviderBalanceStatus> {
+  const baseURL = normalizeBaseUrl(configuredBaseURL?.trim() || PROVIDERS.deepseek.baseURL);
   const payload = await fetchJson(`${baseURL}/user/balance`, {
     method: "GET",
     headers: {
@@ -152,8 +153,8 @@ async function fetchDeepSeekBalance(apiKey: string): Promise<ProviderBalanceStat
   });
 }
 
-async function fetchSiliconFlowBalance(apiKey: string): Promise<ProviderBalanceStatus> {
-  const baseURL = normalizeBaseUrl(process.env.SILICONFLOW_BASE_URL ?? PROVIDERS.siliconflow.baseURL);
+async function fetchSiliconFlowBalance(apiKey: string, configuredBaseURL?: string | null): Promise<ProviderBalanceStatus> {
+  const baseURL = normalizeBaseUrl(configuredBaseURL?.trim() || PROVIDERS.siliconflow.baseURL);
   const payload = await fetchJson(`${baseURL}/user/info`, {
     method: "GET",
     headers: {
@@ -191,8 +192,8 @@ async function fetchSiliconFlowBalance(apiKey: string): Promise<ProviderBalanceS
   });
 }
 
-async function fetchKimiBalance(apiKey: string): Promise<ProviderBalanceStatus> {
-  const baseURL = normalizeBaseUrl(process.env.KIMI_BASE_URL ?? PROVIDERS.kimi.baseURL);
+async function fetchKimiBalance(apiKey: string, configuredBaseURL?: string | null): Promise<ProviderBalanceStatus> {
+  const baseURL = normalizeBaseUrl(configuredBaseURL?.trim() || PROVIDERS.kimi.baseURL);
   const payload = await fetchJson(`${baseURL}/users/me/balance`, {
     method: "GET",
     headers: {
@@ -247,12 +248,12 @@ async function getProviderBalance(input: ProviderBalanceInput): Promise<Provider
 
   try {
     if (input.provider === "deepseek") {
-      return await fetchDeepSeekBalance(apiKey);
+      return await fetchDeepSeekBalance(apiKey, input.baseURL);
     }
     if (input.provider === "siliconflow") {
-      return await fetchSiliconFlowBalance(apiKey);
+      return await fetchSiliconFlowBalance(apiKey, input.baseURL);
     }
-    return await fetchKimiBalance(apiKey);
+    return await fetchKimiBalance(apiKey, input.baseURL);
   } catch (error) {
     const message = error instanceof Error && error.message.trim()
       ? error.message.trim()
@@ -277,11 +278,12 @@ async function getProviderBalance(input: ProviderBalanceInput): Promise<Provider
   }
 }
 
-async function listBalances(providerKeyMap: Map<LLMProvider, string | null | undefined>): Promise<ProviderBalanceStatus[]> {
+async function listBalances(providerConfigMap: Map<LLMProvider, Pick<ProviderBalanceInput, "apiKey" | "baseURL">>): Promise<ProviderBalanceStatus[]> {
   const providers = Object.keys(PROVIDERS) as LLMProvider[];
   const results = await Promise.all(providers.map((provider) => getProviderBalance({
     provider,
-    apiKey: providerKeyMap.get(provider),
+    apiKey: providerConfigMap.get(provider)?.apiKey,
+    baseURL: providerConfigMap.get(provider)?.baseURL,
   })));
   return results;
 }

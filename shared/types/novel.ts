@@ -1031,9 +1031,22 @@ export interface ModelRouteConfig {
   model: string;
   temperature: number;
   maxTokens?: number | null;
+  reasoningEffort?: ModelRouteReasoningEffort;
   requestProtocol?: ModelRouteRequestProtocol;
   structuredResponseFormat?: ModelRouteStructuredResponseFormat;
 }
+
+export const MODEL_ROUTE_REASONING_EFFORTS = [
+  "auto",
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+] as const;
+
+export type ModelRouteReasoningEffort = typeof MODEL_ROUTE_REASONING_EFFORTS[number];
 
 export const MODEL_ROUTE_REQUEST_PROTOCOLS = [
   "auto",

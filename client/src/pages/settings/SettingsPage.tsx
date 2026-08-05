@@ -29,6 +29,7 @@ import SettingsSectionGroup from "./components/SettingsSectionGroup";
 import StyleEngineRuntimeSettingsCard from "./components/StyleEngineRuntimeSettingsCard";
 import SettingsActionResult from "./SettingsActionResult";
 import { AUTO_DIRECTOR_MOBILE_CLASSES } from "@/mobile/autoDirector";
+import { isLikelyEmbeddingModel } from "@/lib/llmSelection";
 
 function formatConnectionTestResult(response: Awaited<ReturnType<typeof testLLMConnection>>): string {
   const latency = response.data?.latency ?? 0;
@@ -157,6 +158,12 @@ export default function SettingsPage() {
     ]);
   };
 
+  const refreshProviderQueriesInBackground = () => {
+    void invalidateProviderQueries().catch((error) => {
+      console.warn("Failed to refresh provider settings after active state update.", error);
+    });
+  };
+
   const updateProviderModelsInCache = (provider: string, models: string[], currentModel: string) => {
     queryClient.setQueryData<ApiResponse<APIKeyStatus[]>>(queryKeys.settings.apiKeys, (previous) => {
       if (!previous?.data) {
@@ -169,6 +176,53 @@ export default function SettingsPage() {
             ...item,
             models,
             currentModel,
+          }
+          : item),
+      };
+    });
+  };
+
+  const patchProviderInCache = (provider: string, patch: Partial<APIKeyStatus>) => {
+    queryClient.setQueryData<ApiResponse<APIKeyStatus[]>>(queryKeys.settings.apiKeys, (previous) => {
+      if (!previous?.data) {
+        return previous;
+      }
+      return {
+        ...previous,
+        data: previous.data.map((item) => item.provider === provider
+          ? {
+            ...item,
+            ...patch,
+          }
+          : item),
+      };
+    });
+  };
+
+  const syncProviderSaveResponseInCache = (response: Awaited<ReturnType<typeof saveAPIKeySetting>>) => {
+    const data = response.data;
+    if (!data) {
+      return;
+    }
+    queryClient.setQueryData<ApiResponse<APIKeyStatus[]>>(queryKeys.settings.apiKeys, (previous) => {
+      if (!previous?.data) {
+        return previous;
+      }
+      return {
+        ...previous,
+        data: previous.data.map((item) => item.provider === data.provider
+          ? {
+            ...item,
+            currentModel: data.model ?? item.currentModel,
+            currentImageModel: data.imageModel,
+            currentBaseURL: data.baseURL ?? item.currentBaseURL,
+            isActive: data.isActive,
+            reasoningEnabled: data.reasoningEnabled,
+            concurrencyLimit: data.concurrencyLimit,
+            requestIntervalMs: data.requestIntervalMs,
+            models: data.models.length > 0 ? data.models : item.models,
+            imageModels: data.imageModels,
+            supportsImageGeneration: data.supportsImageGeneration,
           }
           : item),
       };
@@ -299,6 +353,36 @@ export default function SettingsPage() {
     },
   });
 
+  const toggleActiveMutation = useMutation({
+    mutationFn: (payload: { provider: LLMProvider; isActive: boolean }) =>
+      saveAPIKeySetting(payload.provider, {
+        isActive: payload.isActive,
+      }),
+    onMutate: async (variables) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.settings.apiKeys });
+      const previousApiKeys = queryClient.getQueryData<ApiResponse<APIKeyStatus[]>>(queryKeys.settings.apiKeys);
+      patchProviderInCache(variables.provider, { isActive: variables.isActive });
+      setProviderTestResults((prev) => {
+        const next = { ...prev };
+        delete next[variables.provider];
+        return next;
+      });
+      return { previousApiKeys };
+    },
+    onSuccess: (response, variables) => {
+      const providerName = providerConfigs.find((item) => item.provider === variables.provider)?.name ?? variables.provider;
+      syncProviderSaveResponseInCache(response);
+      setActionResult(response.message ?? `${providerName} 已${variables.isActive ? "启用" : "停用"}。`);
+      refreshProviderQueriesInBackground();
+    },
+    onError: (error, _variables, context) => {
+      if (context?.previousApiKeys) {
+        queryClient.setQueryData(queryKeys.settings.apiKeys, context.previousApiKeys);
+      }
+      setActionResult(error instanceof Error ? error.message : "更新厂商启用状态失败。");
+    },
+  });
+
   const refreshBalanceMutation = useMutation({
     mutationFn: (provider: LLMProvider) => refreshProviderBalance(provider),
     onSuccess: async (response, provider) => {
@@ -370,7 +454,7 @@ export default function SettingsPage() {
         name: form.displayName.trim(),
         key: form.key.trim() ? form.key : undefined,
         model: form.model.trim() || undefined,
-        imageModel: form.imageModel.trim(),
+        imageModel: form.imageModel.trim() || undefined,
         baseURL: form.baseURL.trim(),
         concurrencyLimit: Number.parseInt(form.concurrencyLimit, 10) || 0,
         requestIntervalMs: Number.parseInt(form.requestIntervalMs, 10) || 0,
@@ -463,7 +547,7 @@ export default function SettingsPage() {
     <div className={AUTO_DIRECTOR_MOBILE_CLASSES.settingsPageRoot}>
       <SettingsSectionGroup
         title="开始创作必需"
-        description="先让模型和任务路由可用，新手就能进入自动导演、开书和章节生产。"
+        description="先完成模型配置和任务路由检测，新手就能进入自动导演、开书和章节生产。"
         status="required"
       >
         <SettingsReadinessCard items={readinessItems} />
@@ -471,11 +555,12 @@ export default function SettingsPage() {
           providers={providerConfigs}
           balances={providerBalancesQuery.data?.data ?? []}
           isBalanceLoading={providerBalancesQuery.isLoading}
-          testingProvider={testMutation.variables?.provider}
+          testingProvider={testMutation.isPending ? testMutation.variables?.provider : undefined}
           providerTestResults={providerTestResults}
-          refreshingModelProvider={refreshModelsMutation.variables}
-          refreshingBalanceProvider={refreshBalanceMutation.variables}
-          reasoningProvider={toggleReasoningMutation.variables?.provider}
+          refreshingModelProvider={refreshModelsMutation.isPending ? refreshModelsMutation.variables : undefined}
+          refreshingBalanceProvider={refreshBalanceMutation.isPending ? refreshBalanceMutation.variables : undefined}
+          reasoningProvider={toggleReasoningMutation.isPending ? toggleReasoningMutation.variables?.provider : undefined}
+          activeProvider={toggleActiveMutation.isPending ? toggleActiveMutation.variables?.provider : undefined}
           onCreateCustomProvider={openCreateCustomDialog}
           onOpenConfig={openBuiltInDialog}
           onTest={handleProviderCardTest}
@@ -492,6 +577,13 @@ export default function SettingsPage() {
             toggleReasoningMutation.mutate({
               provider,
               reasoningEnabled,
+            });
+          }}
+          onToggleActive={(provider, isActive) => {
+            setActionResult("");
+            toggleActiveMutation.mutate({
+              provider,
+              isActive,
             });
           }}
         />
@@ -546,7 +638,7 @@ export default function SettingsPage() {
         submitDisabled={providerSubmitDisabled}
         submitLabel={providerSubmitLabel}
         onTest={handleTestProviderDialog}
-        testDisabled={testMutation.isPending || !form.model.trim() || !form.baseURL.trim()}
+        testDisabled={testMutation.isPending || !form.model.trim() || !form.baseURL.trim() || isLikelyEmbeddingModel(form.model)}
         testResult={dialogTestResult}
         onDeleteCustomProvider={handleDeleteCustomProvider}
         deleteDisabled={deleteCustomProviderMutation.isPending}

@@ -6,11 +6,6 @@ import { taskDispatcher } from "./TaskDispatcher";
 
 const ACTIVE_COMMAND_STATUSES = ["leased", "running"] as const;
 
-function resolveNumberEnv(name: string, fallback: number): number {
-  const value = Number(process.env[name]);
-  return Number.isFinite(value) && value > 0 ? value : fallback;
-}
-
 function resolveDefaultSlots(): number {
   return Math.max(4, os.cpus().length);
 }
@@ -78,12 +73,11 @@ export class DirectorTaskQueue {
     commandService = new DirectorCommandService(),
   ) {
     this.workerId = options.workerId
-      ?? process.env.DIRECTOR_WORKER_ID?.trim()
       ?? `director-worker-${os.hostname()}-${process.pid}`;
-    this.leaseMs = resolveNumberEnv("DIRECTOR_WORKER_LEASE_MS", options.leaseMs ?? 120_000);
-    this.staleScanMs = resolveNumberEnv("DIRECTOR_WORKER_STALE_SCAN_MS", options.staleScanMs ?? 30_000);
-    this.executionSlots = resolveNumberEnv("DIRECTOR_WORKER_EXECUTION_SLOTS", options.executionSlots ?? resolveDefaultSlots());
-    this.pollMs = resolveNumberEnv("DIRECTOR_WORKER_POLL_MS", options.pollMs ?? 5_000);
+    this.leaseMs = options.leaseMs ?? 120_000;
+    this.staleScanMs = options.staleScanMs ?? 30_000;
+    this.executionSlots = options.executionSlots ?? resolveDefaultSlots();
+    this.pollMs = options.pollMs ?? 5_000;
     this.commandService = commandService;
   }
 
@@ -128,8 +122,7 @@ export class DirectorTaskQueue {
     const key = `${novelId?.trim() || "_global"}:${resourceClass}`;
     let gate = this.gates.get(key);
     if (!gate) {
-      const envName = `DIRECTOR_WORKER_RESOURCE_${resourceClass.toUpperCase()}_LIMIT`;
-      gate = new ResourceGate(resolveNumberEnv(envName, PER_NOVEL_RESOURCE_LIMITS[resourceClass] ?? 2));
+      gate = new ResourceGate(PER_NOVEL_RESOURCE_LIMITS[resourceClass] ?? 2);
       this.gates.set(key, gate);
     }
     await gate.acquire();

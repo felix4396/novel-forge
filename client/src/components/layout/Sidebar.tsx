@@ -14,7 +14,6 @@ import {
   LayoutDashboard,
   ListTodo,
   MonitorPlay,
-  Route,
   SquareStack,
   ScanSearch,
   Settings2,
@@ -42,6 +41,7 @@ interface NavItem {
   icon: LucideIcon;
   action?: "visual_asset_library";
   disabled?: boolean;
+  end?: boolean;
 }
 
 interface NavGroup {
@@ -83,8 +83,7 @@ const navGroups: NavGroup[] = [
     title: "系统",
     items: [
       { to: "/prompt-workbench", label: "提示词管理", icon: Braces },
-      { to: "/settings/model-routes", label: "模型路由", icon: Route },
-      { to: "/settings", label: "系统设置", icon: Settings2 },
+      { to: "/settings", label: "系统设置", icon: Settings2, end: true },
     ],
   },
 ];
@@ -275,7 +274,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
               }
 
               return (
-                <NavLink key={item.to} to={item.to} title={collapsed ? item.label : undefined}>
+                <NavLink key={item.to} to={item.to} end={item.end} title={collapsed ? item.label : undefined}>
                   {({ isActive }) => (
                     <div
                       className={cn(

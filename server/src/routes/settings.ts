@@ -4,12 +4,9 @@ import type { BuiltinLLMProvider, LLMProvider } from "@ai-novel/shared/types/llm
 import { z } from "zod";
 import { setProviderSecretCache } from "../llm/factory";
 import { evictSharedLimiters } from "../llm/requestLimiter";
-import { refreshProviderModels } from "../llm/modelCatalog";
+import { getProviderModels, refreshProviderModels } from "../llm/modelCatalog";
 import { llmProviderSchema } from "../llm/providerSchema";
 import {
-  getProviderEnvApiKey,
-  getProviderEnvBaseUrl,
-  getProviderEnvModel,
   isBuiltInProvider,
   providerRequiresApiKey,
   PROVIDERS,
@@ -199,18 +196,17 @@ function buildBuiltInProviderStatus(
   imageModel: string | undefined,
 ): BuiltInProviderStatus {
   const savedKey = normalizeOptionalText(item?.key);
-  const envKey = getProviderEnvApiKey(provider);
-  const effectiveKey = savedKey ?? envKey;
   const savedBaseURL = normalizeOptionalText(item?.baseURL);
-  const configuredModel = normalizeOptionalText(item?.model) ?? getProviderEnvModel(provider);
-  const currentBaseURL = savedBaseURL
-    ?? getProviderEnvBaseUrl(provider)
-    ?? PROVIDERS[provider].baseURL;
+  const configuredModel = normalizeOptionalText(item?.model);
+  const currentBaseURL = savedBaseURL ?? PROVIDERS[provider].baseURL;
   const requiresApiKey = providerRequiresApiKey(provider);
   const models = getFallbackModels(provider, configuredModel);
   const currentModel = configuredModel ?? models[0] ?? "";
   const currentImageModel = imageModel ?? getDefaultImageModel(provider) ?? null;
-  const isConfigured = requiresApiKey ? Boolean(effectiveKey && currentModel) : Boolean(currentModel && currentBaseURL);
+  const isConfigured = requiresApiKey
+    ? Boolean(savedKey && currentModel)
+    : Boolean(currentModel && (savedBaseURL || (item?.isActive && currentBaseURL)));
+  const defaultActive = requiresApiKey ? isConfigured : false;
 
   return {
     provider,
@@ -227,7 +223,7 @@ function buildBuiltInProviderStatus(
     defaultBaseURL: PROVIDERS[provider].baseURL,
     requiresApiKey,
     isConfigured,
-    isActive: item?.isActive ?? isConfigured,
+    isActive: item?.isActive ?? defaultActive,
     reasoningEnabled: item?.reasoningEnabled ?? true,
     concurrencyLimit: normalizeProviderLimit(item?.concurrencyLimit),
     requestIntervalMs: normalizeProviderLimit(item?.requestIntervalMs),
@@ -235,7 +231,7 @@ function buildBuiltInProviderStatus(
   };
 }
 
-function buildCustomProviderStatus(item: {
+async function buildCustomProviderStatus(item: {
   provider: string;
   displayName: string | null;
   key: string | null;
@@ -245,10 +241,17 @@ function buildCustomProviderStatus(item: {
   reasoningEnabled?: boolean | null;
   concurrencyLimit?: number | null;
   requestIntervalMs?: number | null;
-}, imageModel: string | undefined): CustomProviderStatus {
+}, imageModel: string | undefined): Promise<CustomProviderStatus> {
   const currentModel = normalizeOptionalText(item.model) ?? "";
   const currentBaseURL = normalizeOptionalText(item.baseURL) ?? "";
-  const models = currentModel ? [currentModel] : [];
+  const models = await getProviderModels(item.provider, {
+    apiKey: item.isActive ? normalizeOptionalText(item.key) : undefined,
+    baseURL: item.isActive ? currentBaseURL : undefined,
+    allowAnonymous: Boolean(item.isActive && currentBaseURL),
+    fallbackModel: currentModel,
+    fallbackModels: [currentModel],
+    includeBuiltInFallback: false,
+  });
   return {
     provider: item.provider,
     kind: "custom",
@@ -257,7 +260,7 @@ function buildCustomProviderStatus(item: {
     currentModel,
     currentImageModel: imageModel ?? null,
     currentBaseURL,
-    models,
+    models: models.length > 0 ? models : currentModel ? [currentModel] : [],
     imageModels: imageModel ? [imageModel] : [],
     defaultModel: currentModel,
     defaultImageModel: null,
@@ -436,9 +439,11 @@ router.get("/api-keys", async (_req, res, next) => {
     const builtInProviders = SUPPORTED_PROVIDERS.map((provider) =>
       buildBuiltInProviderStatus(provider, keyMap.get(provider), imageModelMap.get(provider)),
     );
-    const customProviders = keys
-      .filter((item) => !isBuiltInProvider(item.provider))
-      .map((item) => buildCustomProviderStatus(item, imageModelMap.get(item.provider)));
+    const customProviders = await Promise.all(
+      keys
+        .filter((item) => !isBuiltInProvider(item.provider))
+        .map((item) => buildCustomProviderStatus(item, imageModelMap.get(item.provider))),
+    );
     const data = [...builtInProviders, ...customProviders];
     res.status(200).json({
       success: true,
@@ -453,13 +458,16 @@ router.get("/api-keys", async (_req, res, next) => {
 router.get("/api-keys/balances", async (_req, res, next) => {
   try {
     const keys = await secretStore.listProviders({ providers: SUPPORTED_PROVIDERS });
-    const keyMap = new Map(
+    const providerConfigMap = new Map(
       SUPPORTED_PROVIDERS.map((provider) => {
         const record = keys.find((item) => item.provider === provider);
-        return [provider, normalizeOptionalText(record?.key) ?? getProviderEnvApiKey(provider)] as const;
+        return [provider, {
+          apiKey: record?.isActive ? normalizeOptionalText(record.key) : undefined,
+          baseURL: record?.isActive ? normalizeOptionalText(record.baseURL) : undefined,
+        }] as const;
       }),
     );
-    const data = await providerBalanceService.listBalances(keyMap);
+    const data = await providerBalanceService.listBalances(providerConfigMap);
     res.status(200).json({
       success: true,
       data,
@@ -484,8 +492,7 @@ router.put(
       }
 
       const nextKey = normalizeOptionalText(body.key) ?? normalizeOptionalText(existingRecord?.key);
-      const envKey = getProviderEnvApiKey(provider);
-      const effectiveKey = nextKey ?? envKey;
+      const effectiveKey = nextKey;
       const nextModel = normalizeOptionalText(body.model) ?? normalizeOptionalText(existingRecord?.model);
       const nextBaseURL = body.baseURL !== undefined
         ? normalizeOptionalText(body.baseURL)
@@ -498,7 +505,7 @@ router.put(
       const nextRequestIntervalMs = body.requestIntervalMs ?? normalizeProviderLimit(existingRecord?.requestIntervalMs);
       const requiresApiKey = providerRequiresApiKey(provider);
 
-      if (requiresApiKey && !effectiveKey) {
+      if (requiresApiKey && !effectiveKey && body.isActive !== false) {
         throw new AppError("请先填写 API Key。", 400);
       }
       if (!isBuiltInProvider(provider) && !nextModel) {
@@ -513,7 +520,7 @@ router.put(
           key: nextKey ?? null,
           model: nextModel ?? null,
           baseURL: nextBaseURL ?? null,
-          isActive: body.isActive ?? true,
+          isActive: body.isActive ?? existingRecord?.isActive ?? (requiresApiKey ? Boolean(effectiveKey) : false),
           reasoningEnabled: nextReasoningEnabled,
           concurrencyLimit: nextConcurrencyLimit,
           requestIntervalMs: nextRequestIntervalMs,
@@ -549,11 +556,20 @@ router.put(
       evictSharedLimiters(provider);
 
       let models = getFallbackModels(provider, data.model ?? undefined);
-      let message = "厂商配置已保存。";
-      try {
-        models = await refreshProviderModels(provider, effectiveKey, nextBaseURL ?? getProviderEnvBaseUrl(provider));
-      } catch {
-        message = "厂商配置已保存，但模型列表刷新失败。可以稍后在厂商卡片中刷新。";
+      const onlyActiveChanged = Object.keys(body).every((key) => key === "isActive");
+      let message = body.isActive === false ? "厂商已停用。" : body.isActive === true ? "厂商已启用。" : "厂商配置已保存。";
+      if (!onlyActiveChanged && data.isActive) {
+        try {
+          models = await refreshProviderModels(
+            provider,
+            effectiveKey,
+            nextBaseURL ?? (isBuiltInProvider(provider) ? PROVIDERS[provider].baseURL : undefined),
+          );
+        } catch {
+          message = "厂商配置已保存，但模型列表刷新失败。可以稍后在厂商卡片中刷新。";
+        }
+      } else if (!onlyActiveChanged && !data.isActive) {
+        message = "厂商配置已保存。启用后再刷新模型列表。";
       }
 
       res.status(200).json({
@@ -605,7 +621,8 @@ router.post(
       const keyConfig = await secretStore.getProvider(provider);
       const data = await providerBalanceService.getProviderBalance({
         provider,
-        apiKey: normalizeOptionalText(keyConfig?.key) ?? getProviderEnvApiKey(provider),
+        apiKey: keyConfig?.isActive ? normalizeOptionalText(keyConfig.key) : undefined,
+        baseURL: keyConfig?.isActive ? normalizeOptionalText(keyConfig.baseURL) : undefined,
       });
       res.status(200).json({
         success: true,
@@ -625,17 +642,19 @@ router.post(
     try {
       const { provider } = req.params as z.infer<typeof providerSchema>;
       const keyConfig = await secretStore.getProvider(provider);
-      const effectiveKey = normalizeOptionalText(keyConfig?.key) ?? getProviderEnvApiKey(provider);
+      if (!keyConfig?.isActive) {
+        throw new AppError("请先启用该厂商，再刷新模型列表。", 400);
+      }
+      const effectiveKey = keyConfig?.isActive ? normalizeOptionalText(keyConfig.key) : undefined;
       if (providerRequiresApiKey(provider) && !effectiveKey) {
         throw new AppError("请先配置 API Key，再刷新模型列表。", 400);
       }
       const models = await refreshProviderModels(
         provider,
         effectiveKey,
-        normalizeOptionalText(keyConfig?.baseURL) ?? getProviderEnvBaseUrl(provider),
+        normalizeOptionalText(keyConfig?.baseURL) ?? (isBuiltInProvider(provider) ? PROVIDERS[provider].baseURL : undefined),
       );
       const currentModel = normalizeOptionalText(keyConfig?.model)
-        ?? getProviderEnvModel(provider)
         ?? (isBuiltInProvider(provider) ? PROVIDERS[provider].defaultModel : "");
       res.status(200).json({
         success: true,

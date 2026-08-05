@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CopyCheck, RefreshCw, Save } from "lucide-react";
-import type { StructuredFallbackSettings } from "@/api/settings";
+import type { ApiResponse } from "@ai-novel/shared/types/api";
+import type { ModelRoutesResponse, StructuredFallbackSettings } from "@/api/settings";
 import {
   getAPIKeySettings,
   getModelRoutes,
@@ -23,6 +24,9 @@ import {
   buildRouteSavePayload,
   formatConnectivityStatus,
   formatRagEmbeddingStatus,
+  formatReasoningEffortLabel,
+  formatRequestProtocolLabel,
+  formatStructuredResponseFormatLabel,
   getPreferredModel,
   getProviderDisplayName,
   isSameRouteDraft,
@@ -76,39 +80,103 @@ export default function ModelRoutesPage() {
     refetchOnWindowFocus: false,
   });
 
+  function refreshConnectivityInBackground() {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.settings.modelRouteConnectivity }).catch((error) => {
+      console.warn("Failed to refresh model route connectivity.", error);
+    });
+  }
+
+  function refreshModelRoutesInBackground() {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.settings.modelRoutes }).catch((error) => {
+      console.warn("Failed to refresh model routes.", error);
+    });
+  }
+
+  function applySavedRoutesToCache(payloads: RouteSavePayload[]) {
+    queryClient.setQueryData<ApiResponse<ModelRoutesResponse>>(
+      queryKeys.settings.modelRoutes,
+      (current) => {
+        if (!current?.data) {
+          return current;
+        }
+        const routeByTaskType = new Map(current.data.routes.map((route) => [route.taskType, route]));
+        payloads.forEach((payload) => {
+          routeByTaskType.set(payload.taskType, {
+            taskType: payload.taskType,
+            provider: payload.provider,
+            model: payload.model,
+            temperature: payload.temperature,
+            maxTokens: payload.maxTokens ?? null,
+            reasoningEffort: payload.reasoningEffort,
+            requestProtocol: payload.requestProtocol,
+            structuredResponseFormat: payload.structuredResponseFormat,
+          });
+        });
+        const routes = current.data.taskTypes
+          .map((taskType) => routeByTaskType.get(taskType))
+          .filter((route): route is ModelRoutesResponse["routes"][number] => Boolean(route));
+
+        return {
+          ...current,
+          data: {
+            ...current.data,
+            routes,
+          },
+        };
+      },
+    );
+  }
+
+  function clearSavedRouteDrafts(taskTypesToClear: ModelRouteTaskType[]) {
+    setRouteDrafts((prev) => {
+      const next = { ...prev };
+      taskTypesToClear.forEach((taskType) => {
+        delete next[taskType];
+      });
+      return next;
+    });
+  }
+
   const saveModelRouteMutation = useMutation({
     mutationFn: (payload: RouteSavePayload) => saveModelRoute(payload),
-    onSuccess: async () => {
-      setActionResult("保存完成，这个任务会使用新路由。");
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.settings.modelRoutes }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.settings.modelRouteConnectivity }),
-      ]);
+    onSuccess: (_response, payload) => {
+      applySavedRoutesToCache([payload]);
+      clearSavedRouteDrafts([payload.taskType]);
+      setActionResult("保存完成，这个任务会使用新路由；正在后台重新检测生效路由。");
+      refreshModelRoutesInBackground();
+      refreshConnectivityInBackground();
     },
   });
 
   const saveAllModelRoutesMutation = useMutation({
     mutationFn: async (payloads: RouteSavePayload[]) => {
       await Promise.all(payloads.map((payload) => saveModelRoute(payload)));
-      return payloads.length;
+      return payloads;
     },
-    onSuccess: async (count) => {
-      setActionResult(`保存完成，${count} 个任务会使用新路由。`);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.settings.modelRoutes }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.settings.modelRouteConnectivity }),
-      ]);
+    onSuccess: (payloads) => {
+      applySavedRoutesToCache(payloads);
+      clearSavedRouteDrafts(payloads.map((payload) => payload.taskType));
+      setActionResult(`保存完成，${payloads.length} 个任务会使用新路由；正在后台重新检测生效路由。`);
+      refreshModelRoutesInBackground();
+      refreshConnectivityInBackground();
     },
   });
 
   const saveStructuredFallbackMutation = useMutation({
     mutationFn: (payload: Partial<StructuredFallbackSettings>) => saveStructuredFallbackConfig(payload),
-    onSuccess: async () => {
-      setActionResult("结构化备用模型保存完成。");
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.settings.structuredFallback }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.settings.modelRouteConnectivity }),
-      ]);
+    onSuccess: (response) => {
+      if (response.data) {
+        queryClient.setQueryData<ApiResponse<StructuredFallbackSettings>>(
+          queryKeys.settings.structuredFallback,
+          response,
+        );
+      }
+      setStructuredFallbackDraft(null);
+      setActionResult("结构化备用模型保存完成；正在后台重新检测生效路由。");
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.structuredFallback }).catch((error) => {
+        console.warn("Failed to refresh structured fallback settings.", error);
+      });
+      refreshConnectivityInBackground();
     },
   });
 
@@ -134,13 +202,19 @@ export default function ModelRoutesPage() {
   }, [modelRouteConnectivity?.statuses, modelRouteConnectivity?.testedAt]);
   const ragEmbeddingStatus = modelRouteConnectivity?.ragEmbedding ?? null;
   const isCheckingConnectivity = modelRouteConnectivityQuery.isPending || modelRouteConnectivityQuery.isFetching;
-  const ragEmbeddingState: ConnectivityState = isCheckingConnectivity
-    ? "checking"
-    : !ragEmbeddingStatus
-      ? "idle"
-      : ragEmbeddingStatus.ok
-        ? "healthy"
-        : "failed";
+  const hasConnectivitySnapshot = connectivitySummary.total > 0 || Boolean(ragEmbeddingStatus);
+  const connectivitySummaryText = isCheckingConnectivity
+    ? hasConnectivitySnapshot
+      ? `正在重新检测生效路由... 上次结果：${connectivitySummary.total} 条路由，健康 ${connectivitySummary.healthy}，异常 ${connectivitySummary.failed}${ragEmbeddingStatus ? `；RAG 向量${ragEmbeddingStatus.ok ? "正常" : "异常"}` : ""}`
+      : "首次检测生效路由..."
+    : connectivitySummary.total > 0
+      ? `检测结果：${connectivitySummary.total} 条路由，健康 ${connectivitySummary.healthy}，异常 ${connectivitySummary.failed}${ragEmbeddingStatus ? `；RAG 向量${ragEmbeddingStatus.ok ? "正常" : "异常"}` : ""}`
+      : "尚未执行模型兼容性检测";
+  const ragEmbeddingState: ConnectivityState = !ragEmbeddingStatus
+    ? isCheckingConnectivity ? "checking" : "idle"
+    : ragEmbeddingStatus.ok
+      ? "healthy"
+      : "failed";
   const overallConnectivityState: ConnectivityState = isCheckingConnectivity
     ? "checking"
     : connectivitySummary.failed > 0 || ragEmbeddingStatus?.ok === false
@@ -148,6 +222,7 @@ export default function ModelRoutesPage() {
       : connectivitySummary.total > 0
         ? "healthy"
         : "idle";
+  const failedTaskCountLabel = isCheckingConnectivity && hasConnectivitySnapshot ? "上次异常任务" : "检测异常任务";
   const preferredProviderConfig = useMemo(
     () => providerConfigs.find((item) => item.isConfigured && item.isActive && getPreferredModel(item))
       ?? providerConfigs.find((item) => getPreferredModel(item))
@@ -188,6 +263,7 @@ export default function ModelRoutesPage() {
       model: route?.model ?? "",
       temperature: route?.temperature != null ? String(route.temperature) : "0.7",
       maxTokens: route?.maxTokens != null ? String(route.maxTokens) : "",
+      reasoningEffort: route?.reasoningEffort ?? "auto",
       requestProtocol: route?.requestProtocol ?? "auto",
       structuredResponseFormat: route?.structuredResponseFormat ?? "auto",
     };
@@ -202,6 +278,7 @@ export default function ModelRoutesPage() {
       model: defaultModel,
       temperature: "0.7",
       maxTokens: "",
+      reasoningEffort: "auto",
       requestProtocol: "auto",
       structuredResponseFormat: "auto",
     };
@@ -252,6 +329,7 @@ export default function ModelRoutesPage() {
       model: structuredFallback?.model ?? "deepseek-chat",
       temperature: structuredFallback != null ? String(structuredFallback.temperature) : "0.2",
       maxTokens: structuredFallback?.maxTokens != null ? String(structuredFallback.maxTokens) : "",
+      reasoningEffort: "auto",
       maxRepairAttempts: structuredFallback != null ? String(structuredFallback.maxRepairAttempts) : "1",
       requestProtocol: "auto",
       structuredResponseFormat: "auto",
@@ -286,11 +364,7 @@ export default function ModelRoutesPage() {
                 <RouteStatusDot
                   state={overallConnectivityState}
                 />
-                {isCheckingConnectivity
-                  ? "正在检测生效路由..."
-                  : connectivitySummary.total > 0
-                    ? `检测结果：${connectivitySummary.total} 条路由，健康 ${connectivitySummary.healthy}，异常 ${connectivitySummary.failed}${ragEmbeddingStatus ? `；RAG 向量${ragEmbeddingStatus.ok ? "正常" : "异常"}` : ""}`
-                    : "尚未执行模型兼容性检测"}
+                {connectivitySummaryText}
               </span>
               {ragEmbeddingStatus ? (
                 <span className="inline-flex items-center gap-2">
@@ -343,11 +417,12 @@ export default function ModelRoutesPage() {
             modelEmptyText="这个服务商没有可选模型"
             manualModelPlaceholder="也可以手动输入模型名"
             showProtocolFields={false}
+            showReasoningField={false}
           />
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="text-xs text-muted-foreground">
-              待保存任务 {dirtyTaskTypes.length} 个；检测异常任务 {failedTaskTypes.length} 个；空白路由 {emptyRouteTaskTypes.length} 个。
+              待保存任务 {dirtyTaskTypes.length} 个；{failedTaskCountLabel} {failedTaskTypes.length} 个；空白路由 {emptyRouteTaskTypes.length} 个。
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Button
@@ -400,7 +475,7 @@ export default function ModelRoutesPage() {
         <CardHeader>
           <CardTitle>结构化备用模型</CardTitle>
           <CardDescription>
-            主模型能对话但 JSON 不稳时，可在所有结构化任务上统一启用备用模型。
+            主模型能对话但 JSON 不稳时，可为所有结构化任务启用统一回退模型。
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -426,7 +501,12 @@ export default function ModelRoutesPage() {
             maxTokensPlaceholder="留空则使用系统默认"
             modelEmptyText="这个服务商没有可选模型"
             manualModelPlaceholder="也可以手动输入模型名"
+            showProtocolFields={false}
           />
+
+          <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+            备用模型的请求协议和结构化格式由系统自动选择；如需固定某个任务的协议或 JSON 策略，请在下方对应任务路由中设置。
+          </div>
 
           <div className="grid gap-3 md:grid-cols-[0.6fr_1.4fr]">
             <div className="space-y-1">
@@ -439,7 +519,7 @@ export default function ModelRoutesPage() {
               />
             </div>
             <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
-              范围 0-5。模型返回 JSON 解析失败或 Schema 校验失败时，系统会按该次数调用修复模型；0 表示只做本地解析和规范化，不调用修复模型。
+              范围 0-5。JSON 解析失败或 Schema 校验失败时，系统会按该次数调用当前结构化执行模型修复；0 表示只做本地解析和规范化，不再调用模型修复。
             </div>
           </div>
 
@@ -466,10 +546,11 @@ export default function ModelRoutesPage() {
         const draft = getRouteDraft(taskType);
         const label = MODEL_ROUTE_LABELS[taskType];
         const providerName = getProviderDisplayName(providerConfigs, draft.provider);
+        const savedRoute = routeMap.get(taskType);
         const connectivity = connectivityMap.get(taskType);
         const connectivityState = resolveConnectivityState(
           connectivity,
-          modelRouteConnectivityQuery.isPending || modelRouteConnectivityQuery.isFetching,
+          isCheckingConnectivity && !connectivity,
         );
         const isDirty = dirtyTaskTypeSet.has(taskType);
         const hasUnsavedRouteDiff = connectivity != null
@@ -482,6 +563,25 @@ export default function ModelRoutesPage() {
               && draft.structuredResponseFormat !== connectivity.structured?.strategy
             )
           );
+        const structuredFallbackAvailableForRoute = Boolean(
+          structuredFallback?.enabled
+            && structuredFallback.model.trim().length > 0
+            && savedRoute
+            && !(
+              structuredFallback.provider === savedRoute.provider
+              && structuredFallback.model === savedRoute.model
+            ),
+        );
+        const structuredFallbackStatusText = structuredFallback?.enabled
+          ? structuredFallbackAvailableForRoute
+            ? "备用模型已启用"
+            : "备用模型与当前路由相同，不会回退"
+          : connectivity?.structured?.fallbackAvailable
+            ? "备用模型已启用"
+            : "备用模型未启用";
+        const routePreferenceLabel = isDirty ? "表单配置（未保存）" : "保存配置";
+        const detectedProtocol = connectivity?.structured?.requestProtocol ?? connectivity?.requestProtocol ?? null;
+        const detectedStructuredStrategy = connectivity?.structured?.strategy ?? null;
 
         return (
           <Card key={taskType}>
@@ -525,12 +625,19 @@ export default function ModelRoutesPage() {
                     <span>{formatConnectivityStatus(connectivity)}</span>
                   </div>
                   {connectivity?.structured ? (
-                    <div>
-                      请求协议：{connectivity.structured.requestProtocol ?? connectivity.requestProtocol ?? "无"}，
-                      结构化策略：{connectivity.structured.strategy ?? "无"}，
-                      {connectivity.structured.reasoningForcedOff ? "会关闭 thinking" : "保留 thinking"}，
-                      {connectivity.structured.fallbackAvailable ? "备用模型可用" : "备用模型未启用"}
-                    </div>
+                    <>
+                      <div>
+                        {routePreferenceLabel}：请求协议 {formatRequestProtocolLabel(draft.requestProtocol)}，
+                        结构化格式 {formatStructuredResponseFormatLabel(draft.structuredResponseFormat)}，
+                        推理强度 {formatReasoningEffortLabel(draft.reasoningEffort)}
+                      </div>
+                      <div>
+                        检测实际：请求协议 {formatRequestProtocolLabel(detectedProtocol)}，
+                        结构化策略 {formatStructuredResponseFormatLabel(detectedStructuredStrategy)}，
+                        {connectivity.structured.reasoningForcedOff ? "会关闭 thinking" : "保留 thinking"}，
+                        {structuredFallbackStatusText}
+                      </div>
+                    </>
                   ) : null}
                   {hasUnsavedRouteDiff ? (
                     <div>检测结果来自生效路由；保存后会自动重新检测。</div>

@@ -150,7 +150,7 @@ export function createAnthropicLLM(options: AnthropicLLMOptions): {
         headers: {
           "content-type": "application/json",
           "x-api-key": options.apiKey ?? "",
-          "anthropic-version": process.env.ANTHROPIC_VERSION ?? "2023-06-01",
+          "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
           model: options.model,

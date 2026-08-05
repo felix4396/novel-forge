@@ -26,7 +26,7 @@ export class MockTTSProvider implements TTSProviderPort {
   readonly provider = "mock";
   readonly label = "模拟配音通道";
   readonly description = "用于联调短剧配音链路的本地模拟 provider，不会生成真实语音。";
-  readonly costPerSecond = normalizeCostValue(process.env.DRAMA_TTS_MOCK_COST_PER_SECOND);
+  readonly costPerSecond = 0;
   readonly currency = readCostCurrency();
 
   async synthesize(input: TTSGenerationRequest): Promise<TTSGenerationResult> {
@@ -49,7 +49,7 @@ function normalizeCostValue(value: unknown): number {
 }
 
 function readCostCurrency(): string {
-  return process.env.DRAMA_COST_CURRENCY?.trim() || "CNY";
+  return "CNY";
 }
 
 function readStringField(record: Record<string, unknown>, keys: string[]): string | undefined {
@@ -167,17 +167,3 @@ class TTSProviderRegistry {
 
 export const ttsProviderRegistry = new TTSProviderRegistry();
 ttsProviderRegistry.register(new MockTTSProvider());
-
-const httpSynthesizeUrl = process.env.DRAMA_TTS_HTTP_SYNTHESIZE_URL?.trim();
-if (httpSynthesizeUrl) {
-  ttsProviderRegistry.register(new HttpTTSProvider({
-    provider: process.env.DRAMA_TTS_HTTP_PROVIDER_ID?.trim() || "http",
-    label: process.env.DRAMA_TTS_HTTP_PROVIDER_LABEL?.trim() || "HTTP 配音通道",
-    description: process.env.DRAMA_TTS_HTTP_PROVIDER_DESCRIPTION?.trim() || "通过环境变量配置的外部 TTS 服务。",
-    synthesizeUrl: httpSynthesizeUrl,
-    apiKey: process.env.DRAMA_TTS_HTTP_API_KEY?.trim() || undefined,
-    timeoutMs: normalizeTimeoutMs(process.env.DRAMA_TTS_HTTP_TIMEOUT_MS),
-    costPerSecond: normalizeCostValue(process.env.DRAMA_TTS_HTTP_COST_PER_SECOND),
-    currency: process.env.DRAMA_TTS_HTTP_COST_CURRENCY?.trim() || readCostCurrency(),
-  }));
-}

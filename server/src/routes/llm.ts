@@ -7,7 +7,7 @@ import { getStructuredFallbackSettings, saveStructuredFallbackSettings } from ".
 import { getProviderModels } from "../llm/modelCatalog";
 import { listModelRouteConfigs, MODEL_ROUTE_TASK_TYPES, upsertModelRouteConfig } from "../llm/modelRouter";
 import { llmProviderSchema } from "../llm/providerSchema";
-import { getProviderEnvApiKey, getProviderEnvModel, isBuiltInProvider, PROVIDERS } from "../llm/providers";
+import { isBuiltInProvider, providerRequiresApiKey, PROVIDERS } from "../llm/providers";
 import { authMiddleware } from "../middleware/auth";
 import { AppError } from "../middleware/errorHandler";
 import { validate } from "../middleware/validate";
@@ -44,11 +44,11 @@ router.get("/providers", async (_req, res, next) => {
       Object.entries(PROVIDERS).map(async ([provider, config]) => {
         const keyConfig = keyMap.get(provider);
         const currentModel = keyConfig?.model?.trim()
-          || getProviderEnvModel(provider)
           || config.defaultModel;
         const models = await getProviderModels(provider, {
-          apiKey: keyConfig?.key ?? getProviderEnvApiKey(provider),
-          baseURL: keyConfig?.baseURL ?? undefined,
+          apiKey: keyConfig?.isActive ? keyConfig.key ?? undefined : undefined,
+          baseURL: keyConfig?.isActive ? keyConfig.baseURL ?? undefined : undefined,
+          allowAnonymous: Boolean(keyConfig?.isActive && !providerRequiresApiKey(provider)),
           fallbackModel: currentModel,
           fallbackModels: [...config.models, currentModel],
         });
@@ -66,8 +66,9 @@ router.get("/providers", async (_req, res, next) => {
         .map(async (item) => {
           const currentModel = item.model?.trim() || "";
           const models = await getProviderModels(item.provider, {
-            apiKey: item.key ?? undefined,
-            baseURL: item.baseURL ?? undefined,
+            apiKey: item.isActive ? item.key ?? undefined : undefined,
+            baseURL: item.isActive ? item.baseURL ?? undefined : undefined,
+            allowAnonymous: item.isActive && !providerRequiresApiKey(item.provider),
             fallbackModel: currentModel,
             fallbackModels: [currentModel],
           });
@@ -160,6 +161,7 @@ const modelRouteUpsertSchema = z.object({
   model: z.string().trim().min(1),
   temperature: z.number().min(0).max(2).optional(),
   maxTokens: z.union([z.number().int().min(64).max(16384), z.null()]).optional(),
+  reasoningEffort: z.enum(["auto", "none", "minimal", "low", "medium", "high", "xhigh"]).optional(),
   requestProtocol: z.enum(["auto", "openai_compatible", "anthropic"]).optional(),
   structuredResponseFormat: z.enum(["auto", "json_schema", "json_object", "prompt_json"]).optional(),
 });
@@ -175,6 +177,7 @@ router.put(
         model: body.model,
         temperature: body.temperature,
         maxTokens: body.maxTokens ?? null,
+        reasoningEffort: body.reasoningEffort,
         requestProtocol: body.requestProtocol,
         structuredResponseFormat: body.structuredResponseFormat,
       });
