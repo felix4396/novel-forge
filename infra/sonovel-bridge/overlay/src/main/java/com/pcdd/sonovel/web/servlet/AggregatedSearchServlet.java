@@ -1,7 +1,7 @@
 package com.pcdd.sonovel.web.servlet;
 
 import cn.hutool.core.util.StrUtil;
-import com.pcdd.sonovel.actions.AggregatedSearchAction;
+import com.pcdd.sonovel.action.AggregatedSearchAction;
 import com.pcdd.sonovel.core.AppConfigLoader;
 import com.pcdd.sonovel.model.SearchResult;
 import com.pcdd.sonovel.web.util.RespUtils;
@@ -18,9 +18,9 @@ public class AggregatedSearchServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         String name = req.getParameter("kw");
         String searchLimitStr = req.getParameter("searchLimit");
-        List<SearchResult> results = AggregatedSearchAction.getSearchResults(
-                name,
-                sourceId -> !BridgeSourcePolicy.isDisabled(sourceId));
+        List<SearchResult> results = AggregatedSearchAction.getSearchResults(name).stream()
+                .filter(result -> !BridgeSourcePolicy.isDisabled(result.getSourceId()))
+                .toList();
 
         if (StrUtil.isNotBlank(searchLimitStr)) {
             try {
