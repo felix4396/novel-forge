@@ -2,11 +2,10 @@ import { prisma } from "../../db/prisma";
 import { ragConfig } from "../../config/rag";
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import {
-  getProviderEnvApiKey,
+  getProviderDefaultBaseUrl,
   isBuiltInProvider,
   providerRequiresApiKey,
   PROVIDERS,
-  resolveProviderBaseUrl,
 } from "../../llm/providers";
 import { normalizeRagText } from "./utils";
 import { getRagEmbeddingSettings } from "../settings/RagSettingsService";
@@ -118,18 +117,17 @@ export class EmbeddingService {
   private async resolveApiKey(provider: LLMProvider): Promise<string | undefined> {
     try {
       const dbSecret = await prisma.aPIKey.findUnique({ where: { provider } });
-      if (dbSecret?.isActive && dbSecret.key?.trim()) {
-        return dbSecret.key.trim();
+      if (!dbSecret?.isActive) {
+        throw new Error(`Embedding provider=${provider} is disabled.`);
+      }
+      const apiKey = dbSecret.key?.trim();
+      if (apiKey) {
+        return apiKey;
       }
     } catch (error) {
       if (!isMissingTableError(error)) {
         throw error;
       }
-    }
-
-    const envApiKey = getProviderEnvApiKey(provider);
-    if (envApiKey) {
-      return envApiKey;
     }
 
     if (!providerRequiresApiKey(provider)) {
@@ -143,16 +141,17 @@ export class EmbeddingService {
     let dbBaseURL: string | undefined;
     try {
       const record = await prisma.aPIKey.findUnique({ where: { provider } });
-      if (record?.isActive && record.baseURL?.trim()) {
-        dbBaseURL = record.baseURL.trim();
+      if (!record?.isActive) {
+        throw new Error(`Embedding provider=${provider} is disabled.`);
       }
+      dbBaseURL = record.baseURL?.trim() || undefined;
     } catch (error) {
       if (!isMissingTableError(error)) {
         throw error;
       }
     }
 
-    const resolved = resolveProviderBaseUrl(provider, dbBaseURL, dbBaseURL);
+    const resolved = dbBaseURL ?? getProviderDefaultBaseUrl(provider);
     if (resolved) {
       return resolved.replace(/\/+$/, "");
     }

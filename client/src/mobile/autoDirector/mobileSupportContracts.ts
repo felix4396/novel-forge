@@ -31,7 +31,6 @@ export const AUTO_DIRECTOR_MOBILE_CLASSES = {
   followUpOverviewSectionGrid: "auto-director-follow-up-section-grid grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6",
   followUpPageRoot: "mobile-page-follow-ups w-full max-w-full overflow-x-hidden space-y-4",
   fullWidthAction: "w-full sm:w-auto",
-  navbarModelSelector: "hidden sm:block",
   navbarWorkspaceToggle: "hidden sm:inline-flex",
   settingsActionRow: "flex flex-col gap-2 sm:flex-row sm:justify-end",
   settingsEntryActionRow: "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between",

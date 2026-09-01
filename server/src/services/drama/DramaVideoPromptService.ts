@@ -48,15 +48,7 @@ function normalizeRefImageUrl(url: string): string {
   if (!trimmed.startsWith("/")) {
     return trimmed;
   }
-  const baseUrl = process.env.DRAMA_VIDEO_REF_IMAGE_BASE_URL?.trim() || process.env.APP_BASE_URL?.trim();
-  if (!baseUrl) {
-    return trimmed;
-  }
-  try {
-    return new URL(trimmed, baseUrl).toString();
-  } catch {
-    return trimmed;
-  }
+  return trimmed;
 }
 
 async function collectShotReferenceImages(videoPrompt: VideoPromptReferenceSource): Promise<string[]> {

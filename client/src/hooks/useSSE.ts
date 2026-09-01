@@ -112,6 +112,7 @@ export function useSSE(options?: UseSSEOptions) {
             ...(options?.headers ?? {}),
           },
           body: JSON.stringify(body ?? {}),
+          credentials: "include",
           signal: controller.signal,
         });
 

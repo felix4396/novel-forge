@@ -14,12 +14,14 @@ export default function ProviderSettingsSection(props: {
   refreshingModelProvider?: string;
   refreshingBalanceProvider?: string;
   reasoningProvider?: string;
+  activeProvider?: string;
   onCreateCustomProvider: () => void;
   onOpenConfig: (provider: LLMProvider) => void;
   onTest: (provider: APIKeyStatus) => void;
   onRefreshModels: (provider: LLMProvider) => void;
   onRefreshBalance: (provider: LLMProvider) => void;
   onToggleReasoning: (provider: LLMProvider, reasoningEnabled: boolean) => void;
+  onToggleActive: (provider: LLMProvider, isActive: boolean) => void;
 }) {
   const {
     providers,
@@ -30,12 +32,14 @@ export default function ProviderSettingsSection(props: {
     refreshingModelProvider,
     refreshingBalanceProvider,
     reasoningProvider,
+    activeProvider,
     onCreateCustomProvider,
     onOpenConfig,
     onTest,
     onRefreshModels,
     onRefreshBalance,
     onToggleReasoning,
+    onToggleActive,
   } = props;
   const balanceMap = new Map(balances.map((item) => [item.provider, item]));
   const viewModels: ProviderCardViewModel[] = providers.map((provider) => {
@@ -52,6 +56,7 @@ export default function ProviderSettingsSection(props: {
       isBalanceRefreshing: refreshingBalanceProvider === provider.provider,
       canRefreshBalance,
       isReasoningUpdating: reasoningProvider === provider.provider,
+      isActiveUpdating: activeProvider === provider.provider,
       isTesting: testingProvider === provider.provider,
       testResult: providerTestResults[provider.provider],
     };
@@ -63,7 +68,7 @@ export default function ProviderSettingsSection(props: {
         <div className="min-w-0 space-y-1">
           <CardTitle>模型厂商</CardTitle>
           <CardDescription className={AUTO_DIRECTOR_MOBILE_CLASSES.wrapText}>
-            先保证至少一个文本模型可用；余额明细、请求限制和模型列表可以在高级详情里检查。
+            先配置并启用至少一个文本模型；真实连通性请通过“测试连接”确认。
           </CardDescription>
         </div>
         <Button className={AUTO_DIRECTOR_MOBILE_CLASSES.fullWidthAction} onClick={onCreateCustomProvider}>
@@ -80,6 +85,7 @@ export default function ProviderSettingsSection(props: {
             onRefreshModels={onRefreshModels}
             onRefreshBalance={onRefreshBalance}
             onToggleReasoning={onToggleReasoning}
+            onToggleActive={onToggleActive}
             isRefreshingModels={refreshingModelProvider === item.provider.provider}
           />
         ))}

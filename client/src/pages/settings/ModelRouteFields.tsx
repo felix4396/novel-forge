@@ -7,10 +7,12 @@ import {
   getPreferredModel,
   getProviderConfig,
   getProviderDisplayName,
+  MODEL_ROUTE_REASONING_EFFORT_OPTIONS,
   getStructuredResponseFormatOptions,
   type RouteDraft,
 } from "./modelRoutes.utils";
 import type {
+  ModelRouteReasoningEffort,
   ModelRouteRequestProtocol,
   ModelRouteStructuredResponseFormat,
 } from "@ai-novel/shared/types/novel";
@@ -25,6 +27,7 @@ interface ModelRouteFieldsProps {
   modelEmptyText: string;
   manualModelPlaceholder: string;
   showProtocolFields?: boolean;
+  showReasoningField?: boolean;
 }
 
 export default function ModelRouteFields({
@@ -37,11 +40,15 @@ export default function ModelRouteFields({
   modelEmptyText,
   manualModelPlaceholder,
   showProtocolFields = true,
+  showReasoningField = true,
 }: ModelRouteFieldsProps) {
   const modelOptions = getModelOptions(providerConfigs, draft.provider, draft.model);
+  const gridClass = showProtocolFields
+    ? showReasoningField ? "md:grid-cols-7" : "md:grid-cols-6"
+    : showReasoningField ? "md:grid-cols-5" : "md:grid-cols-4";
 
   return (
-    <div className={`grid gap-3 ${showProtocolFields ? "md:grid-cols-6" : "md:grid-cols-4"}`}>
+    <div className={`grid gap-3 ${gridClass}`}>
       <div className="space-y-1">
         <div className="text-xs text-muted-foreground">服务商</div>
         <Select
@@ -91,7 +98,30 @@ export default function ModelRouteFields({
           placeholder={temperaturePlaceholder}
           onChange={(event) => onPatch({ temperature: event.target.value })}
         />
+        <div className="text-[11px] text-muted-foreground">控制随机性，不是推理强度。</div>
       </div>
+
+      {showReasoningField ? (
+        <div className="space-y-1">
+          <div className="text-xs text-muted-foreground">推理强度</div>
+          <Select
+            value={draft.reasoningEffort}
+            onValueChange={(value) => onPatch({ reasoningEffort: value as ModelRouteReasoningEffort })}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="自动选择" />
+            </SelectTrigger>
+            <SelectContent>
+              {MODEL_ROUTE_REASONING_EFFORT_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="text-[11px] text-muted-foreground">仅支持 reasoning effort 的模型会生效。</div>
+        </div>
+      ) : null}
 
       <div className="space-y-1">
         <div className="text-xs text-muted-foreground">最大输出长度</div>

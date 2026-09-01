@@ -1,11 +1,16 @@
 import type { BaseMessageChunk } from "@langchain/core/messages";
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
+import type { ModelRouteReasoningEffort } from "@ai-novel/shared/types/novel";
 
 const THINK_OPEN_TAG = "<think>";
 const THINK_CLOSE_TAG = "</think>";
 const DEEPSEEK_HOST_PATTERN = /(?:^|:\/\/)(?:api\.)?deepseek\.com(?:\/|$)/i;
 const MINIMAX_HOST_PATTERN = /(?:^|:\/\/)(?:api\.)?minimax(?:i)?\.(?:io|com)(?:\/|$)/i;
 const MINIMAX_MODEL_PATTERN = /^minimax-m2(?:[.-]|$)/i;
+const OPENAI_HOST_PATTERN = /(?:^|:\/\/)(?:api\.)?openai\.com(?:\/|$)/i;
+const OPENAI_REASONING_MODEL_PATTERN = /^(?:gpt-5|o[1-9]|o\d)(?:[.-]|$)/i;
+const QWEN_HOST_PATTERN = /(?:dashscope|aliyuncs\.com|alibaba)/i;
+const QWEN_MODEL_PATTERN = /(?:^|[/:-])qwen/i;
 
 export interface ProviderReasoningBehavior {
   reasoningEnabled: boolean;
@@ -103,19 +108,75 @@ export function isDeepSeekThinkingModeProvider(
   return Boolean(normalizedBaseURL && DEEPSEEK_HOST_PATTERN.test(normalizedBaseURL));
 }
 
+function isOpenAIReasoningEffortProvider(
+  provider: LLMProvider,
+  baseURL?: string,
+  model?: string,
+): boolean {
+  const normalizedModel = normalizeOptionalText(model);
+  if (!normalizedModel || !OPENAI_REASONING_MODEL_PATTERN.test(normalizedModel)) {
+    return false;
+  }
+  if (provider === "openai") {
+    return true;
+  }
+  const normalizedBaseURL = normalizeOptionalText(baseURL);
+  return Boolean(normalizedBaseURL && OPENAI_HOST_PATTERN.test(normalizedBaseURL));
+}
+
+function isQwenThinkingModeProvider(
+  provider: LLMProvider,
+  baseURL?: string,
+  model?: string,
+): boolean {
+  if (provider === "qwen") {
+    return true;
+  }
+  const normalizedModel = normalizeOptionalText(model);
+  if (normalizedModel && QWEN_MODEL_PATTERN.test(normalizedModel)) {
+    return true;
+  }
+  const normalizedBaseURL = normalizeOptionalText(baseURL);
+  return Boolean(normalizedBaseURL && QWEN_HOST_PATTERN.test(normalizedBaseURL));
+}
+
+function toOpenAIReasoningEffort(effort: ModelRouteReasoningEffort): string | undefined {
+  if (
+    effort === "none"
+    || effort === "minimal"
+    || effort === "low"
+    || effort === "medium"
+    || effort === "high"
+    || effort === "xhigh"
+  ) {
+    return effort;
+  }
+  return undefined;
+}
+
 export function resolveProviderReasoningBehavior(input: {
   provider: LLMProvider;
   baseURL: string;
   model: string;
+  reasoningEffort: ModelRouteReasoningEffort;
   reasoningEnabled: boolean;
 }): ProviderReasoningBehavior {
+  const reasoningEnabled = input.reasoningEffort === "none" ? false : input.reasoningEnabled;
+  const openAIReasoningEffort = toOpenAIReasoningEffort(input.reasoningEffort);
+  const openAIReasoningKwargs = input.reasoningEnabled
+    && openAIReasoningEffort
+    && isOpenAIReasoningEffortProvider(input.provider, input.baseURL, input.model)
+    ? { reasoning_effort: openAIReasoningEffort }
+    : {};
+
   if (isDeepSeekThinkingModeProvider(input.provider, input.baseURL, input.model)) {
     return {
-      reasoningEnabled: input.reasoningEnabled,
+      reasoningEnabled,
       modelKwargs: {
         thinking: {
-          type: input.reasoningEnabled ? "enabled" : "disabled",
+          type: reasoningEnabled ? "enabled" : "disabled",
         },
+        ...openAIReasoningKwargs,
       },
       includeRawResponse: false,
       usesAccumulatedStreamDeltas: false,
@@ -125,17 +186,31 @@ export function resolveProviderReasoningBehavior(input: {
   const isMiniMax = isMiniMaxCompatibleProvider(input.provider, input.baseURL, input.model);
   if (isMiniMax) {
     return {
-      reasoningEnabled: input.reasoningEnabled,
+      reasoningEnabled,
       modelKwargs: {
         reasoning_split: true,
+        ...openAIReasoningKwargs,
       },
       includeRawResponse: true,
       usesAccumulatedStreamDeltas: true,
     };
   }
 
+  if (!reasoningEnabled && isQwenThinkingModeProvider(input.provider, input.baseURL, input.model)) {
+    return {
+      reasoningEnabled,
+      modelKwargs: {
+        enable_thinking: false,
+        ...openAIReasoningKwargs,
+      },
+      includeRawResponse: false,
+      usesAccumulatedStreamDeltas: false,
+    };
+  }
+
   return {
-    reasoningEnabled: input.reasoningEnabled,
+    reasoningEnabled,
+    modelKwargs: Object.keys(openAIReasoningKwargs).length > 0 ? openAIReasoningKwargs : undefined,
     includeRawResponse: false,
     usesAccumulatedStreamDeltas: false,
   };

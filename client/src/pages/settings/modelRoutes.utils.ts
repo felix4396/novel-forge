@@ -5,6 +5,7 @@ import type {
   RagEmbeddingConnectivityStatus,
 } from "@/api/settings";
 import type {
+  ModelRouteReasoningEffort,
   ModelRouteRequestProtocol,
   ModelRouteStructuredResponseFormat,
   ModelRouteTaskType,
@@ -15,6 +16,7 @@ export interface RouteDraft {
   model: string;
   temperature: string;
   maxTokens: string;
+  reasoningEffort: ModelRouteReasoningEffort;
   requestProtocol: ModelRouteRequestProtocol;
   structuredResponseFormat: ModelRouteStructuredResponseFormat;
 }
@@ -33,6 +35,7 @@ export interface RouteSavePayload {
   model: string;
   temperature: number;
   maxTokens?: number | null;
+  reasoningEffort: ModelRouteReasoningEffort;
   requestProtocol: ModelRouteRequestProtocol;
   structuredResponseFormat: ModelRouteStructuredResponseFormat;
 }
@@ -64,6 +67,64 @@ export function getStructuredResponseFormatOptions(
     : ["auto", "json_schema", "json_object", "prompt_json"];
 }
 
+export function formatRequestProtocolLabel(protocol?: string | null): string {
+  if (protocol === "openai_compatible") {
+    return "OpenAI 兼容";
+  }
+  if (protocol === "anthropic") {
+    return "Anthropic";
+  }
+  return "自动选择";
+}
+
+export function formatStructuredResponseFormatLabel(format?: string | null): string {
+  if (format === "json_schema") {
+    return "JSON Schema";
+  }
+  if (format === "json_object") {
+    return "JSON Object";
+  }
+  if (format === "prompt_json") {
+    return "Prompt JSON";
+  }
+  return "自动选择";
+}
+
+export function formatReasoningEffortLabel(effort?: string | null): string {
+  if (effort === "none") {
+    return "无推理";
+  }
+  if (effort === "minimal") {
+    return "最小";
+  }
+  if (effort === "low") {
+    return "低";
+  }
+  if (effort === "medium") {
+    return "中";
+  }
+  if (effort === "high") {
+    return "高";
+  }
+  if (effort === "xhigh") {
+    return "极高";
+  }
+  return "自动选择";
+}
+
+export const MODEL_ROUTE_REASONING_EFFORT_OPTIONS: Array<{
+  value: ModelRouteReasoningEffort;
+  label: string;
+}> = [
+  { value: "auto", label: "自动选择" },
+  { value: "none", label: "无推理" },
+  { value: "minimal", label: "最小" },
+  { value: "low", label: "低" },
+  { value: "medium", label: "中" },
+  { value: "high", label: "高" },
+  { value: "xhigh", label: "极高" },
+];
+
 function parseTemperature(value: string, fallback: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -85,6 +146,7 @@ export function buildRouteSavePayload(taskType: ModelRouteTaskType, draft: Route
     model: draft.model,
     temperature: parseTemperature(draft.temperature, 0.7),
     maxTokens: parseMaxTokens(draft.maxTokens),
+    reasoningEffort: draft.reasoningEffort,
     requestProtocol: draft.requestProtocol,
     structuredResponseFormat: draft.structuredResponseFormat,
   };
@@ -98,6 +160,7 @@ export function isSameRouteDraft(draft: RouteDraft, route: SavedModelRoute | und
     && draft.model.trim() === route.model
     && parseTemperature(draft.temperature, 0.7) === route.temperature
     && parseMaxTokens(draft.maxTokens) === route.maxTokens
+    && draft.reasoningEffort === (route.reasoningEffort ?? "auto")
     && draft.requestProtocol === route.requestProtocol
     && draft.structuredResponseFormat === route.structuredResponseFormat;
 }
@@ -107,7 +170,7 @@ export function formatStructuredStatus(status: ModelRouteConnectivityStatus["str
     return "结构化诊断：未执行";
   }
   if (status.ok) {
-    return `结构化正常 · ${status.requestProtocol ?? "auto"} · ${status.strategy ?? "prompt_json"}${status.reasoningForcedOff ? " · 会关闭 thinking" : ""}`;
+    return `结构化检测正常 · 实际协议 ${formatRequestProtocolLabel(status.requestProtocol)} · 实际策略 ${formatStructuredResponseFormatLabel(status.strategy)}${status.reasoningForcedOff ? " · 会关闭 thinking" : ""}`;
   }
   return `结构化异常 · ${status.errorCategory ?? "unknown"} · ${status.error ?? "未知错误"}`;
 }

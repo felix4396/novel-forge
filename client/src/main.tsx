@@ -9,6 +9,8 @@ import { APP_RUNTIME } from "./lib/constants";
 import AppRouter from "./router";
 import { Toaster } from "./components/ui/toast";
 import "./index.css";
+import { AuthProvider } from "./auth/AuthContext";
+import AuthGate from "./auth/AuthGate";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -30,7 +32,11 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <AppRouterProvider basename={routerBaseName}>
         <DesktopBootstrapBoundary>
           <ServerStartupGate>
-            <AppRouter />
+            <AuthProvider>
+              <AuthGate>
+                <AppRouter />
+              </AuthGate>
+            </AuthProvider>
           </ServerStartupGate>
         </DesktopBootstrapBoundary>
         <Toaster />

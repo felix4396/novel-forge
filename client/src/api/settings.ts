@@ -128,6 +128,7 @@ export interface ModelRoutesResponse {
     model: string;
     temperature: number;
     maxTokens: number | null;
+    reasoningEffort: ModelRouteConfig["reasoningEffort"];
     requestProtocol: ModelRouteRequestProtocol;
     structuredResponseFormat: ModelRouteStructuredResponseFormat;
   }>;
@@ -525,6 +526,6 @@ export async function testLLMConnection(payload: {
         profileFamily: string | null;
       } | null;
     }>
-  >("/llm/test", payload);
+  >("/llm/test", payload, { silentErrorStatuses: [400] });
   return data;
 }

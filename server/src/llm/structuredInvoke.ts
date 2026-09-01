@@ -3,7 +3,7 @@ import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import type { TaskType } from "./modelRouter";
-import type { ModelRouteRequestProtocol } from "@ai-novel/shared/types/novel";
+import type { ModelRouteReasoningEffort, ModelRouteRequestProtocol } from "@ai-novel/shared/types/novel";
 import {
   createLLMFromResolvedOptions,
   resolveLLMClientOptions,
@@ -54,6 +54,7 @@ export interface StructuredInvokeInput<T> {
   baseURL?: string;
   temperature?: number;
   maxTokens?: number;
+  reasoningEffort?: ModelRouteReasoningEffort;
   timeoutMs?: number;
   signal?: AbortSignal;
   taskType?: TaskType;
@@ -72,6 +73,7 @@ interface StructuredAttemptTarget {
   baseURL?: string;
   temperature: number;
   maxTokens?: number;
+  reasoningEffort?: ModelRouteReasoningEffort;
   profile: StructuredOutputProfile;
   requestProtocol: ResolvedLLMClientOptions["requestProtocol"];
   preferredStrategy: StructuredOutputStrategy | null;
@@ -116,6 +118,7 @@ async function resolveAttemptTarget(input: {
   baseURL?: string;
   temperature?: number;
   maxTokens?: number;
+  reasoningEffort?: ModelRouteReasoningEffort;
   taskType?: TaskType;
   requestProtocol?: ModelRouteRequestProtocol;
   structuredStrategy?: StructuredOutputStrategy;
@@ -134,6 +137,7 @@ async function resolveAttemptTarget(input: {
     model: input.model,
     temperature: input.temperature,
     maxTokens: input.maxTokens,
+    reasoningEffort: input.reasoningEffort,
     taskType: input.taskType ?? "planner",
     requestProtocol: input.requestProtocol,
     structuredStrategy: input.structuredStrategy,
@@ -151,6 +155,7 @@ async function resolveAttemptTarget(input: {
     baseURL: resolved.baseURL,
     temperature: resolved.temperature,
     maxTokens: resolved.maxTokens,
+    reasoningEffort: resolved.reasoningEffort,
     requestProtocol: resolved.requestProtocol,
     preferredStrategy,
     profile: resolveStructuredOutputProfile({
@@ -179,6 +184,7 @@ async function invokeStructuredAttempt<T>(input: {
     model: input.target.model,
     temperature: attemptTemperature,
     maxTokens: input.target.maxTokens,
+    reasoningEffort: input.target.reasoningEffort,
     timeoutMs: input.baseInput.timeoutMs,
     taskType: input.baseInput.taskType ?? "planner",
     promptMeta: input.baseInput.promptMeta,
@@ -384,6 +390,7 @@ export async function invokeStructuredLlmDetailed<T>(input: StructuredInvokeInpu
     baseURL: effectiveInput.baseURL,
     temperature: effectiveInput.temperature ?? 0.3,
     maxTokens: effectiveInput.maxTokens,
+    reasoningEffort: effectiveInput.reasoningEffort,
     taskType: effectiveInput.taskType ?? "planner",
     requestProtocol: effectiveInput.requestProtocol,
     structuredStrategy: effectiveInput.structuredStrategy,
@@ -414,6 +421,7 @@ export async function invokeStructuredLlmDetailed<T>(input: StructuredInvokeInpu
       model: fallbackSettings.model,
       temperature: fallbackSettings.temperature,
       maxTokens: fallbackSettings.maxTokens ?? undefined,
+      reasoningEffort: "auto",
       taskType: input.taskType ?? "planner",
     });
     try {

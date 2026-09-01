@@ -23,18 +23,28 @@ export function sanitizeModelList(models: unknown): string[] {
 
 export function resolveModel(currentModel: string, models: string[]): string {
   const normalizedCurrent = currentModel.trim();
-  if (normalizedCurrent) {
+  if (normalizedCurrent && !isLikelyEmbeddingModel(normalizedCurrent)) {
     return normalizedCurrent;
   }
-  return models[0] ?? "";
+  return sanitizeModelList(models).filter((model) => !isLikelyEmbeddingModel(model))[0] ?? "";
+}
+
+export function isLikelyEmbeddingModel(model: string): boolean {
+  return /embedding|embed|text-embedding|bge|gte|e5|arctic|\bm3e\b|minilm/i.test(model.trim());
 }
 
 export function getProviderSelectionModels(config: APIKeyStatus): string[] {
-  return sanitizeModelList([config.currentModel, ...(config.models ?? [])]);
+  return sanitizeModelList([config.currentModel, ...(config.models ?? [])])
+    .filter((model) => !isLikelyEmbeddingModel(model));
 }
 
 export function isRunnableProviderConfig(config: APIKeyStatus): boolean {
-  return config.isConfigured && config.isActive && getProviderSelectionModels(config).length > 0;
+  return (
+    config.isConfigured
+    && config.isActive
+    && !isLikelyEmbeddingModel(config.currentModel)
+    && getProviderSelectionModels(config).length > 0
+  );
 }
 
 export function resolvePreferredLLMSelection(

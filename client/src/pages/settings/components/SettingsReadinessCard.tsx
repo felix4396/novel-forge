@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AUTO_DIRECTOR_MOBILE_CLASSES } from "@/mobile/autoDirector";
+import { isLikelyEmbeddingModel } from "@/lib/llmSelection";
 
 export type SettingsReadinessItem = {
   key: "model" | "routes" | "rag" | "style";
@@ -35,7 +36,7 @@ function getReadinessIcon(state: SettingsReadinessItem["state"]) {
 function getReadinessBadge(state: SettingsReadinessItem["state"]) {
   switch (state) {
     case "ready":
-      return "可用";
+      return "已就绪";
     case "checking":
       return "检查中";
     case "optional":
@@ -63,7 +64,12 @@ export function buildSettingsReadinessItems(input: {
     isModelRoutesChecking,
     isStyleSettingsLoaded,
   } = input;
-  const runnableProviders = providers.filter((item) => item.isConfigured && item.isActive && item.currentModel);
+  const configuredTextProviders = providers.filter(
+    (item) => item.isConfigured
+      && item.isActive
+      && item.currentModel
+      && !isLikelyEmbeddingModel(item.currentModel),
+  );
   const currentRagProvider = ragSettings?.providers.find((item) => item.provider === ragSettings.embeddingProvider);
   const routeStatuses = modelRouteConnectivity?.statuses ?? [];
   const failedRouteCount = routeStatuses.filter(
@@ -80,10 +86,10 @@ export function buildSettingsReadinessItems(input: {
     {
       key: "model",
       title: "正文模型",
-      state: runnableProviders.length > 0 ? "ready" : "warning",
-      description: runnableProviders.length > 0
-        ? `已可使用 ${runnableProviders[0].name} 进行正文与规划生成。`
-        : "先配置一个可用模型，就可以开始开书和生成章节。",
+      state: configuredTextProviders.length > 0 ? "ready" : "warning",
+      description: configuredTextProviders.length > 0
+        ? `已启用 ${configuredTextProviders.length} 个文本模型配置；真实连通性以测试连接和模型路由检测为准。`
+        : "先配置并启用一个文本生成模型，再开始开书和生成章节。",
     },
     {
       key: "routes",
@@ -92,7 +98,7 @@ export function buildSettingsReadinessItems(input: {
       description: isModelRoutesChecking
         ? "正在检查开书、拆章、正文生成和审核任务的模型兼容性。"
         : hasRoutes && failedRouteCount === 0
-          ? "创作任务已有可用路由，后续流程会按任务选择模型。"
+          ? "模型路由检测通过，后续流程会按任务选择模型。"
           : "部分创作任务还需要补齐或修复模型路由。",
     },
     {
@@ -136,7 +142,7 @@ export default function SettingsReadinessCard(props: {
         <div className="min-w-0 space-y-1">
           <CardTitle>创作可用性检查</CardTitle>
           <CardDescription className={AUTO_DIRECTOR_MOBILE_CLASSES.wrapText}>
-            先确认开始写小说必需的模型和路由是否可用；知识库属于增强项，可以稍后再补。
+            先确认开始写小说必需的模型配置和任务路由检测；知识库属于增强项，可以稍后再补。
           </CardDescription>
         </div>
         <Button asChild className={AUTO_DIRECTOR_MOBILE_CLASSES.fullWidthAction}>
@@ -167,7 +173,7 @@ export default function SettingsReadinessCard(props: {
         </div>
         <div className={`text-sm ${canStart ? "text-emerald-700" : "text-muted-foreground"} ${AUTO_DIRECTOR_MOBILE_CLASSES.wrapText}`}>
           {canStart
-            ? "基础创作链路已经可用，可以开始创建或继续推进小说。"
+            ? "基础创作链路已经通过检查，可以开始创建或继续推进小说。"
             : "先处理标记为“需要处理”的项目，完成后再进入自动导演或章节生产会更稳。"}
         </div>
       </CardContent>

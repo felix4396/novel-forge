@@ -33,21 +33,7 @@ interface CreateStyleExtractionTaskInput {
   maxRetries?: number;
 }
 
-function parseTimeoutMs(rawValue: string | undefined, fallback: number, min: number, max: number): number {
-  const parsed = Number(rawValue ?? "");
-  if (!Number.isFinite(parsed)) {
-    return fallback;
-  }
-  const value = Math.floor(parsed);
-  return Math.max(min, Math.min(max, value));
-}
-
-const STYLE_EXTRACTION_HEARTBEAT_INTERVAL_MS = parseTimeoutMs(
-  process.env.STYLE_EXTRACTION_TASK_HEARTBEAT_INTERVAL_MS,
-  10_000,
-  5_000,
-  60_000,
-);
+const STYLE_EXTRACTION_HEARTBEAT_INTERVAL_MS = 10_000;
 
 function stripStructuredOutputPrefix(message: string): string {
   return message.replace(/^\[STRUCTURED_OUTPUT:[a-z_]+\]\s*/iu, "").trim();

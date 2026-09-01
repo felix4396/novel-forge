@@ -46,7 +46,7 @@ export default function SettingsNavigationCards(props: {
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <span>连接状态</span>
             <Badge variant={ragProvider?.isConfigured ? "default" : "outline"}>
-              {ragProvider?.isConfigured ? "API Key 可用" : "缺少 API Key"}
+              {ragProvider?.isConfigured ? "API Key 已配置" : "缺少 API Key"}
             </Badge>
             <Badge variant={ragProvider?.isActive ? "default" : "outline"}>
               {ragProvider?.isActive ? "启用中" : "未启用"}
@@ -64,7 +64,7 @@ export default function SettingsNavigationCards(props: {
         <CardHeader>
           <CardTitle>模型路由</CardTitle>
           <CardDescription className={AUTO_DIRECTOR_MOBILE_CLASSES.wrapText}>
-            为开书、拆章、正文生成和审核任务选择可用模型。
+            为开书、拆章、正文生成和审核任务指定任务模型，并检查连通性。
           </CardDescription>
         </CardHeader>
         <CardContent className={AUTO_DIRECTOR_MOBILE_CLASSES.settingsEntryActionRow}>

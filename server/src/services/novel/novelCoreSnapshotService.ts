@@ -21,20 +21,8 @@ function snapshotCreatedAtMs(value: Date | string): number {
   return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
-export function resolveNovelSnapshotRetentionCount(
-  env: { NOVEL_SNAPSHOT_RETENTION_COUNT?: string } = process.env,
-): number {
-  const rawValue = env.NOVEL_SNAPSHOT_RETENTION_COUNT?.trim();
-  if (!rawValue) {
-    return DEFAULT_NOVEL_SNAPSHOT_RETENTION_COUNT;
-  }
-
-  const parsed = Number(rawValue);
-  if (!Number.isInteger(parsed) || parsed < 1) {
-    return DEFAULT_NOVEL_SNAPSHOT_RETENTION_COUNT;
-  }
-
-  return parsed;
+export function resolveNovelSnapshotRetentionCount(): number {
+  return DEFAULT_NOVEL_SNAPSHOT_RETENTION_COUNT;
 }
 
 export function selectPrunableAutoSnapshotIds(

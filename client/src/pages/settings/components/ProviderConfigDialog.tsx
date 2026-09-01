@@ -176,14 +176,14 @@ export default function ProviderConfigDialog({
 
           {canSelectListedModels ? (
             <div className="space-y-1">
-              <div className="text-xs text-muted-foreground">可用模型</div>
+              <div className="text-xs text-muted-foreground">可选模型</div>
               <SearchableSelect
                 value={form.model}
                 onValueChange={(value) => setForm((prev) => ({ ...prev, model: value }))}
                 options={selectableModels.map((model) => ({ value: model }))}
                 placeholder="选择模型"
                 searchPlaceholder="搜索模型"
-                emptyText="没有可用模型"
+                emptyText="没有可选模型"
               />
             </div>
           ) : null}
@@ -192,7 +192,7 @@ export default function ProviderConfigDialog({
             <div className="text-xs text-muted-foreground">{primaryModelLabel}</div>
             <div className="text-xs text-muted-foreground">
               {isCreatingCustomProvider
-                ? "获取模型列表后会自动填入第一个可用模型；接口不返回列表时，可以手动填写。"
+                ? "获取模型列表后会自动填入第一个可选模型；接口不返回列表时，可以手动填写。"
                 : editingConfig?.kind === "custom" && !canSelectListedModels
                   ? "可点击厂商卡片的“刷新模型”获取列表，也可以手动填写默认模型。"
                   : "如果列表里没有目标模型，可以手动输入。"}
@@ -219,7 +219,7 @@ export default function ProviderConfigDialog({
                   options={imageModelOptions.map((model) => ({ value: model }))}
                   placeholder="选择图像模型"
                   searchPlaceholder="搜索图像模型"
-                  emptyText="没有可用的图像模型"
+                  emptyText="没有可选的图像模型"
                 />
               </div>
             ) : null}

@@ -6,8 +6,6 @@ import { prisma } from "../../db/prisma";
 import { imageGenerationConfig } from "../../config/imageGeneration";
 import {
   getProviderDefaultBaseUrl,
-  getProviderEnvApiKey,
-  getProviderEnvBaseUrl,
   providerRequiresApiKey,
 } from "../../llm/providers";
 import {
@@ -56,11 +54,13 @@ function mapSizeToAspectRatio(size: string): string | undefined {
 async function resolveProviderSecret(provider: LLMProvider): Promise<ProviderSecret> {
   let savedApiKey: string | undefined;
   let savedBaseURL: string | undefined;
+  let isActive = false;
 
   try {
     const config = await prisma.aPIKey.findUnique({
       where: { provider },
     });
+    isActive = Boolean(config?.isActive);
     if (config?.isActive) {
       savedApiKey = config.key?.trim() || undefined;
       savedBaseURL = config.baseURL?.trim() || undefined;
@@ -71,12 +71,16 @@ async function resolveProviderSecret(provider: LLMProvider): Promise<ProviderSec
     }
   }
 
-  const finalApiKey = savedApiKey ?? getProviderEnvApiKey(provider);
+  if (!isActive) {
+    throw new Error(`Provider ${provider} is disabled.`);
+  }
+
+  const finalApiKey = savedApiKey;
   if (providerRequiresApiKey(provider) && !finalApiKey) {
     throw new Error(`Provider ${provider} API key is not configured.`);
   }
 
-  const baseURLSource = savedBaseURL ?? getProviderEnvBaseUrl(provider) ?? getProviderDefaultBaseUrl(provider);
+  const baseURLSource = savedBaseURL ?? getProviderDefaultBaseUrl(provider);
   if (!baseURLSource) {
     throw new Error(`Provider ${provider} API URL is not configured.`);
   }

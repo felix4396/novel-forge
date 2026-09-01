@@ -1,10 +1,7 @@
 const DEFAULT_STALE_RUNNING_TASK_MS = 90 * 60 * 1000;
 
 function resolveStaleRunningTaskMs(): number {
-  const configured = Number(process.env.AUTO_DIRECTOR_STALE_RUNNING_TASK_MS);
-  return Number.isFinite(configured) && configured > 0
-    ? configured
-    : DEFAULT_STALE_RUNNING_TASK_MS;
+  return DEFAULT_STALE_RUNNING_TASK_MS;
 }
 
 function isStructuredOutlineItemKey(itemKey: string | null | undefined): boolean {

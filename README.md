@@ -441,6 +441,8 @@ Copy-Item server/.env.example server/.env
 
 最少建议先确认这些项目：
 
+- `AUTH_USERNAME`、`AUTH_PASSWORD_HASH`、`AUTH_SESSION_SECRET`
+  Web 工作台登录凭据。先运行 `pnpm auth:hash-password` 生成密码哈希，再用 `openssl rand -base64 48` 生成独立的会话密钥；不要把明文密码写进环境变量
 - `AI_NOVEL_DATABASE_MODE=postgresql`
   当前 Workbench 推荐固定使用 PostgreSQL
 - `DATABASE_URL`
@@ -454,6 +456,8 @@ Copy-Item server/.env.example server/.env
 
 注意：
 
+- 除健康检查和登录接口外，所有 API 默认都要求有效登录会话；连续 5 次登录失败会锁定该来源 15 分钟
+- 登录会话使用 `HttpOnly` Cookie，生产环境必须通过 HTTPS 访问；`CORS_ORIGIN` 只保留实际使用的前端地址
 - `OPENAI_API_KEY`、`QWEN_API_KEY`、`DEEPSEEK_API_KEY`、`SILICONFLOW_API_KEY` 这类变量只写入本地 `server/.env`，不要提交到仓库
 - 项目启动后，也可以在页面中配置模型供应商和默认模型
 

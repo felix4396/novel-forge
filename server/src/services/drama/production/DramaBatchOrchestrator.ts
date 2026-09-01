@@ -100,19 +100,12 @@ function roundCost(value: number): number {
 }
 
 function readCostCurrency(): string {
-  return process.env.DRAMA_COST_CURRENCY?.trim() || "CNY";
-}
-
-function providerEnvKey(provider: string): string {
-  return provider.trim().replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").toUpperCase();
+  return "CNY";
 }
 
 function readImageCostPerImage(provider: string): number {
-  const providerKey = providerEnvKey(provider);
-  return normalizeCostNumber(
-    process.env[`DRAMA_IMAGE_COST_PER_IMAGE_${providerKey}`]
-    ?? process.env.DRAMA_IMAGE_COST_PER_IMAGE,
-  );
+  void provider;
+  return 0;
 }
 
 function hasDoneKeyframe(raw: string | null | undefined): boolean {

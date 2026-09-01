@@ -1,5 +1,5 @@
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
-import type { ModelRouteRequestProtocol } from "@ai-novel/shared/types/novel";
+import type { ModelRouteReasoningEffort, ModelRouteRequestProtocol } from "@ai-novel/shared/types/novel";
 import { ChatOpenAI } from "@langchain/openai";
 import type { PromptInvocationMeta } from "../prompting/core/promptTypes";
 import { secretStore } from "../services/settings/secretStore";
@@ -18,12 +18,10 @@ import {
 import { attachLLMUsageTracking } from "./usageTracking";
 import { resolveModel, toStructuredOutputStrategy, type TaskType } from "./modelRouter";
 import {
-  getProviderEnvApiKey,
-  getProviderEnvModel,
+  getProviderDefaultBaseUrl,
   isBuiltInProvider,
   providerRequiresApiKey,
   PROVIDERS,
-  resolveProviderBaseUrl,
 } from "./providers";
 
 interface LLMOptions {
@@ -33,6 +31,7 @@ interface LLMOptions {
   baseURL?: string;
   maxTokens?: number;
   timeoutMs?: number;
+  reasoningEffort?: ModelRouteReasoningEffort;
   reasoningEnabled?: boolean;
   executionMode?: StructuredExecutionMode;
   structuredStrategy?: StructuredOutputStrategy;
@@ -66,6 +65,7 @@ export interface ResolvedLLMClientOptions {
   timeoutMs?: number;
   concurrencyLimit: number;
   requestIntervalMs: number;
+  reasoningEffort: ModelRouteReasoningEffort;
   reasoningEnabled: boolean;
   modelKwargs?: Record<string, unknown>;
   includeRawResponse: boolean;
@@ -86,6 +86,13 @@ const RESOLVED_LLM_OPTIONS = Symbol("RESOLVED_LLM_OPTIONS");
 type ChatOpenAIWithResolvedOptions = ChatOpenAI & {
   [RESOLVED_LLM_OPTIONS]?: ResolvedLLMClientOptions;
 };
+
+interface ProviderSecretState {
+  secret?: ProviderSecret;
+  displayName?: string;
+  hasRecord: boolean;
+  isActive: boolean;
+}
 
 function isMissingTableError(error: unknown): boolean {
   return (
@@ -109,6 +116,22 @@ function normalizeOptionalTimeoutMs(value: number | undefined): number | undefin
     return undefined;
   }
   return Math.floor(value);
+}
+
+function resolveConfiguredBaseUrl(
+  provider: LLMProvider,
+  customBaseURL?: string,
+  fallbackBaseURL?: string,
+): string | undefined {
+  const normalizedCustom = normalizeOptionalText(customBaseURL);
+  if (normalizedCustom) {
+    return normalizedCustom.endsWith("/") ? normalizedCustom.slice(0, -1) : normalizedCustom;
+  }
+  const normalizedFallback = normalizeOptionalText(fallbackBaseURL);
+  if (normalizedFallback) {
+    return normalizedFallback.endsWith("/") ? normalizedFallback.slice(0, -1) : normalizedFallback;
+  }
+  return getProviderDefaultBaseUrl(provider);
 }
 
 function normalizeProviderSecret(secret: ProviderSecret): ProviderSecret {
@@ -173,22 +196,45 @@ export function setProviderSecretCache(provider: LLMProvider, secret: ProviderSe
   providerSecrets.set(provider, normalizeProviderSecret(secret));
 }
 
-async function resolveProviderSecret(provider: LLMProvider): Promise<ProviderSecret | undefined> {
+async function resolveProviderSecretState(provider: LLMProvider): Promise<ProviderSecretState> {
   const cached = providerSecrets.get(provider);
   if (cached) {
-    return cached;
+    return {
+      secret: cached,
+      displayName: cached.displayName,
+      hasRecord: true,
+      isActive: true,
+    };
   }
   try {
     const secret = await secretStore.getProvider(provider);
-    if (!secret || !secret.isActive) {
-      return undefined;
+    if (!secret) {
+      return {
+        hasRecord: false,
+        isActive: false,
+      };
+    }
+    if (!secret.isActive) {
+      return {
+        displayName: normalizeOptionalText(secret.displayName),
+        hasRecord: true,
+        isActive: false,
+      };
     }
     const value = toProviderSecret(secret);
     providerSecrets.set(provider, value);
-    return value;
+    return {
+      secret: value,
+      displayName: value.displayName,
+      hasRecord: true,
+      isActive: true,
+    };
   } catch (error) {
     if (isMissingTableError(error)) {
-      return undefined;
+      return {
+        hasRecord: false,
+        isActive: false,
+      };
     }
     throw error;
   }
@@ -203,6 +249,7 @@ export async function resolveLLMClientOptions(
   let resolvedModel = normalizeOptionalText(options.model);
   let resolvedTemperature: number | undefined = options.temperature;
   let resolvedMaxTokens: number | undefined = options.maxTokens;
+  let resolvedReasoningEffort: ModelRouteReasoningEffort | undefined = options.reasoningEffort;
   let resolvedModelRoute: string | undefined;
   let resolvedRouteDegraded = false;
 
@@ -215,6 +262,7 @@ export async function resolveLLMClientOptions(
       ...(options.model != null ? { model: options.model } : {}),
       ...(options.temperature != null ? { temperature: options.temperature } : {}),
       ...(options.maxTokens != null ? { maxTokens: options.maxTokens } : {}),
+      ...(options.reasoningEffort != null ? { reasoningEffort: options.reasoningEffort } : {}),
     });
     if (shouldUseRouteProvider) {
       resolvedProvider = route.provider;
@@ -227,6 +275,9 @@ export async function resolveLLMClientOptions(
     }
     if (options.maxTokens == null) {
       resolvedMaxTokens = route.maxTokens;
+    }
+    if (options.reasoningEffort == null) {
+      resolvedReasoningEffort = route.reasoningEffort;
     }
     if (options.requestProtocol == null) {
       options.requestProtocol = route.requestProtocol;
@@ -241,13 +292,22 @@ export async function resolveLLMClientOptions(
     resolvedRouteDegraded = route.routeDegraded;
   }
 
-  const dbSecret = await resolveProviderSecret(resolvedProvider);
+  const providerSecretState = await resolveProviderSecretState(resolvedProvider);
+  const dbSecret = providerSecretState.secret;
   const providerName = isBuiltInProvider(resolvedProvider)
     ? PROVIDERS[resolvedProvider].name
-    : dbSecret?.displayName ?? resolvedProvider;
-  const apiKey = normalizeOptionalText(options.apiKey)
-    ?? dbSecret?.key
-    ?? getProviderEnvApiKey(resolvedProvider);
+    : providerSecretState.displayName ?? dbSecret?.displayName ?? resolvedProvider;
+  const explicitApiKey = normalizeOptionalText(options.apiKey);
+  const explicitBaseURL = normalizeOptionalText(options.baseURL);
+  const hasOneOffConnectionConfig = Boolean(explicitApiKey || explicitBaseURL);
+  if (!providerSecretState.isActive && !hasOneOffConnectionConfig) {
+    throw new Error(
+      providerSecretState.hasRecord
+        ? `${providerName} 已停用，请先在系统设置启用该厂商。`
+        : `${providerName} 未启用，请先在系统设置启用该厂商。`,
+    );
+  }
+  const apiKey = explicitApiKey ?? dbSecret?.key;
 
   if (!apiKey && providerRequiresApiKey(resolvedProvider)) {
     throw new Error(`未配置 ${providerName} 的 API Key。`);
@@ -255,13 +315,12 @@ export async function resolveLLMClientOptions(
 
   const model = resolvedModel
     ?? dbSecret?.model
-    ?? getProviderEnvModel(resolvedProvider)
     ?? (isBuiltInProvider(resolvedProvider) ? PROVIDERS[resolvedProvider].defaultModel : undefined);
   if (!model) {
     throw new Error(`未配置 ${providerName} 的默认模型。`);
   }
 
-  const baseURL = resolveProviderBaseUrl(
+  const baseURL = resolveConfiguredBaseUrl(
     resolvedProvider,
     options.baseURL ?? dbSecret?.baseURL,
     dbSecret?.baseURL,
@@ -287,6 +346,7 @@ export async function resolveLLMClientOptions(
     })
     : null;
   const usesNativeStructured = structuredStrategy != null && structuredStrategy !== "prompt_json";
+  const reasoningEffort = resolvedReasoningEffort ?? "auto";
   const requestedReasoningEnabled = options.reasoningEnabled ?? dbSecret?.reasoningEnabled ?? true;
   const shouldForceDisableReasoning = Boolean(
     structuredProfile
@@ -312,6 +372,7 @@ export async function resolveLLMClientOptions(
     provider: resolvedProvider,
     baseURL,
     model,
+    reasoningEffort,
     reasoningEnabled,
   });
   const modelKwargs = {
@@ -330,6 +391,7 @@ export async function resolveLLMClientOptions(
     timeoutMs,
     concurrencyLimit,
     requestIntervalMs,
+    reasoningEffort,
     reasoningEnabled: reasoningBehavior.reasoningEnabled,
     modelKwargs: Object.keys(modelKwargs).length > 0 ? modelKwargs : undefined,
     includeRawResponse: reasoningBehavior.includeRawResponse,
@@ -373,6 +435,7 @@ export function createLLMFromResolvedOptions(resolved: ResolvedLLMClientOptions)
     model: resolved.model,
     temperature: resolved.temperature,
     maxTokens: resolved.maxTokens,
+    reasoningEffort: resolved.reasoningEffort,
     timeoutMs: resolved.timeoutMs,
     taskType: resolved.taskType,
     modelRoute: resolved.modelRoute,

@@ -5,11 +5,6 @@ import {
   UnsupportedNovelSideEffectPayloadError,
 } from "./NovelSideEffectJobHandlers";
 
-function resolveNumberEnv(name: string, fallback: number): number {
-  const value = Number(process.env[name]);
-  return Number.isFinite(value) && value > 0 ? value : fallback;
-}
-
 export interface NovelSideEffectWorkerOptions {
   workerId?: string;
   leaseMs?: number;
@@ -30,10 +25,9 @@ export class NovelSideEffectWorker {
     options: NovelSideEffectWorkerOptions = {},
   ) {
     this.workerId = options.workerId
-      ?? process.env.NOVEL_SIDE_EFFECT_WORKER_ID?.trim()
       ?? `novel-side-effect-${os.hostname()}-${process.pid}`;
-    this.leaseMs = resolveNumberEnv("NOVEL_SIDE_EFFECT_WORKER_LEASE_MS", options.leaseMs ?? 120_000);
-    this.pollMs = resolveNumberEnv("NOVEL_SIDE_EFFECT_WORKER_POLL_MS", options.pollMs ?? 5_000);
+    this.leaseMs = options.leaseMs ?? 120_000;
+    this.pollMs = options.pollMs ?? 5_000;
   }
 
   start(): void {
@@ -84,4 +78,3 @@ export class NovelSideEffectWorker {
 }
 
 export const novelSideEffectWorker = new NovelSideEffectWorker();
-
