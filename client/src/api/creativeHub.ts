@@ -106,6 +106,7 @@ export async function* streamCreativeHubRun(
       "Content-Type": "application/json",
     },
     body: JSON.stringify(requestBody),
+    credentials: "include",
     signal: abortSignal,
   });
 

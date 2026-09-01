@@ -230,6 +230,7 @@ export default function AssistantChatPanel({
               temperature,
               maxTokens,
             }),
+            credentials: "include",
             signal: options.abortSignal,
           });
 

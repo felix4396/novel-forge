@@ -145,7 +145,7 @@ export function useLlmLiveFeed(input: {
           : API_BASE_URL + "/llm-live/stream";
         const response = await fetch(
           streamUrl,
-          { signal: controller.signal },
+          { signal: controller.signal, credentials: "include" },
         );
         if (!response.ok || !response.body) {
           throw new Error("生成实况连接失败");

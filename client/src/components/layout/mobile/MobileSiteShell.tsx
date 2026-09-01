@@ -7,6 +7,7 @@ import {
   Images,
   LayoutGrid,
   ListTodo,
+  LogOut,
   Menu,
   Plus,
   Sparkles,
@@ -20,6 +21,7 @@ import LiveExecutionDialog from "@/components/liveExecution/LiveExecutionDialog"
 import { Button } from "@/components/ui/button";
 import { VisualAssetLibraryDialog } from "@/components/visualAssets";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/auth/AuthContext";
 import {
   getMobileMoreNavGroups,
   getMobileNavGroupForPath,
@@ -42,6 +44,7 @@ interface MobileSiteShellProps {
 }
 
 export default function MobileSiteShell({ children }: MobileSiteShellProps) {
+  const { logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [moreOpen, setMoreOpen] = useState(false);
@@ -150,6 +153,10 @@ export default function MobileSiteShell({ children }: MobileSiteShellProps) {
                   </div>
                 </section>
               ))}
+              <Button type="button" variant="outline" className="w-full" onClick={() => void logout()}>
+                <LogOut className="h-4 w-4" />
+                退出登录
+              </Button>
             </div>
           </div>
         </div>

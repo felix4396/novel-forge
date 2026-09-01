@@ -9,6 +9,7 @@
   },
   "scripts": {
     "check:deps": "node scripts/check-deps.cjs",
+    "auth:hash-password": "node scripts/hash-password.cjs",
     "dev": "node scripts/check-deps.cjs && node scripts/run-with-log.cjs --name dev -- pnpm dev:raw",
     "dev:raw": "concurrently \"pnpm dev:shared\" \"pnpm dev:server\" \"pnpm dev:client\"",
     "dev:log": "node scripts/check-deps.cjs && node scripts/run-with-log.cjs --name dev -- pnpm dev:raw",
