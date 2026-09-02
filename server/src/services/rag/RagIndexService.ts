@@ -203,7 +203,6 @@ export class RagIndexService {
     let provider = ragConfig.embeddingProvider;
     let model = ragConfig.embeddingModel;
     let processed = 0;
-    let lastReportPercent = 0;
 
     const batches: { start: number; texts: string[] }[] = [];
     for (let cursor = 0; cursor < texts.length; cursor += batchSize) {
@@ -220,11 +219,7 @@ export class RagIndexService {
       processed += batch.texts.length;
 
       if (onProgress) {
-        const percent = texts.length > 0 ? processed / texts.length : 1;
-        if (percent - lastReportPercent >= 0.03 || processed >= texts.length) {
-          lastReportPercent = percent;
-          await onProgress({ processed: Math.min(processed, texts.length), total: texts.length });
-        }
+        await onProgress({ processed: Math.min(processed, texts.length), total: texts.length });
       }
     });
 
@@ -822,6 +817,16 @@ export class RagIndexService {
     });
     const splitTexts = candidates.map((item) => item.searchText ?? item.chunkText);
     await this.assertJobNotCancelled(jobId);
+    await this.updateJobProgress(jobId, {
+      stage: "embedding",
+      label: "生成向量",
+      detail: `准备为 ${splitTexts.length} 个分块生成向量（${ragConfig.embeddingConcurrency} 并发）。`,
+      current: 0,
+      total: splitTexts.length,
+      documents: docs.length,
+      chunks: splitTexts.length,
+      percent: 0.15,
+    });
     const embedding = await this.embedTextsInBatches(splitTexts, async ({ processed, total }) => {
       await this.updateJobProgress(jobId, {
         stage: "embedding",
