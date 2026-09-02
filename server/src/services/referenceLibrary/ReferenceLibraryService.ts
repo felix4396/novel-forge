@@ -192,6 +192,7 @@ export class ReferenceLibraryService {
       where: {
         authorsJson,
         status: "succeeded",
+        resultJson: { not: "[]" },
         updatedAt: { gte: new Date(Date.now() - SEARCH_CACHE_MS) },
         expiresAt: { gt: new Date() },
       },
