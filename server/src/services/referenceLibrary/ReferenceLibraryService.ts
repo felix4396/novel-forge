@@ -34,7 +34,7 @@ const SEARCH_CACHE_MS = 30 * 60_000;
 const MAX_FILE_SIZE = 200 * 1024 * 1024;
 const MIN_FREE_BYTES = 2 * 1024 * 1024 * 1024;
 const SEARCH_VALIDATION_CONCURRENCY = 3;
-const FANQIE_BOOK_CONCURRENCY = 3;
+const FANQIE_BOOK_CONCURRENCY = 5;
 const FANQIE_SEARCH_PREFIX = "__fanqie_rank__:";
 
 async function mapWithConcurrency<T, R>(
