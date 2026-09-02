@@ -34,6 +34,7 @@ const SEARCH_CACHE_MS = 30 * 60_000;
 const MAX_FILE_SIZE = 200 * 1024 * 1024;
 const MIN_FREE_BYTES = 2 * 1024 * 1024 * 1024;
 const SEARCH_VALIDATION_CONCURRENCY = 3;
+const FANQIE_BOOK_CONCURRENCY = 3;
 const FANQIE_SEARCH_PREFIX = "__fanqie_rank__:";
 
 async function mapWithConcurrency<T, R>(
@@ -186,9 +187,20 @@ export class ReferenceLibraryService {
 
   async createFanqieRankSearchJob(rawInput: FanqieRankSearchRequest): Promise<ReferenceSearchJobDto> {
     const request = this.normalizeFanqieSearchRequest(rawInput);
+    const authorsJson = JSON.stringify([`${FANQIE_SEARCH_PREFIX}${JSON.stringify(request)}`]);
+    const cached = await prisma.referenceSearchJob.findFirst({
+      where: {
+        authorsJson,
+        status: "succeeded",
+        updatedAt: { gte: new Date(Date.now() - SEARCH_CACHE_MS) },
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+    if (cached) return this.mapSearchJob(cached);
     const job = await prisma.referenceSearchJob.create({
       data: {
-        authorsJson: JSON.stringify([`${FANQIE_SEARCH_PREFIX}${JSON.stringify(request)}`]),
+        authorsJson,
         totalAuthors: 1,
         expiresAt: new Date(Date.now() + SEARCH_TTL_MS),
       },
@@ -300,28 +312,38 @@ export class ReferenceLibraryService {
 
   private async searchFanqieRank(jobId: string, request: FanqieRankSearchRequest): Promise<ReferenceBookCandidate[]> {
     const rank = await this.fanqieRank.listRank({ ...request, limit: request.limit ?? 20 });
-    const candidates: ReferenceBookCandidate[] = [];
     if (rank.items.length === 0) {
       await prisma.referenceSearchJob.update({
         where: { id: jobId },
         data: { progress: 100, processedAuthors: 1, resultJson: "[]", heartbeatAt: new Date() },
       });
-      return candidates;
+      return [];
     }
-    for (const [index, item] of rank.items.entries()) {
-      const result = await this.searchBookCandidate(item, rank.label);
-      if (result) candidates.push(result);
-      await prisma.referenceSearchJob.update({
-        where: { id: jobId },
-        data: {
-          progress: Math.min(99, Math.round(((index + 1) / rank.items.length) * 100)),
-          processedAuthors: 1,
-          resultJson: JSON.stringify(candidates),
-          heartbeatAt: new Date(),
-        },
-      });
-    }
-    return candidates.sort((left, right) => left.title.localeCompare(right.title, "zh-CN"));
+    const results = new Array<ReferenceBookCandidate | null>(rank.items.length).fill(null);
+    let completed = 0;
+    let updateQueue = Promise.resolve();
+    await mapWithConcurrency(
+      rank.items.map((item, index) => ({ item, index })),
+      FANQIE_BOOK_CONCURRENCY,
+      async ({ item, index }) => {
+        results[index] = await this.searchBookCandidate(item, rank.label);
+        completed += 1;
+        const completedCount = completed;
+        const snapshot = results.filter((candidate): candidate is ReferenceBookCandidate => candidate !== null);
+        updateQueue = updateQueue.then(() => prisma.referenceSearchJob.update({
+          where: { id: jobId },
+          data: {
+            progress: Math.min(99, Math.round((completedCount / rank.items.length) * 100)),
+            processedAuthors: 1,
+            resultJson: JSON.stringify(snapshot),
+            heartbeatAt: new Date(),
+          },
+        }).then(() => undefined));
+        await updateQueue;
+        return null;
+      },
+    );
+    return results.filter((candidate): candidate is ReferenceBookCandidate => candidate !== null);
   }
 
   private async searchBookCandidate(
@@ -340,6 +362,11 @@ export class ReferenceLibraryService {
       try {
         const found = await this.soNovel.search(keyword);
         results.push(...found);
+        if (found.some((result) => {
+          const authorKey = normalizeReferenceIdentity(cleanAuthorName(result.author ?? ""));
+          const titleKey = normalizeReferenceIdentity(result.bookName);
+          return authorKey === expectedAuthor && titleKey === expectedTitle;
+        })) break;
       } catch {
         // Keep trying alternative keywords.
       }
