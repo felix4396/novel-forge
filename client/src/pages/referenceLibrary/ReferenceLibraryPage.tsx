@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ReferenceBook, ReferenceBookCandidate } from "@ai-novel/shared/types/referenceLibrary";
+import type { FanqieRankSearchRequest, ReferenceBook, ReferenceBookCandidate } from "@ai-novel/shared/types/referenceLibrary";
 import {
   BookOpenCheck,
   Download,
   FileSearch,
+  Flame,
   Library,
   RefreshCw,
   Search,
@@ -14,10 +15,12 @@ import { Link } from "react-router-dom";
 import {
   createReferenceDownloadJobs,
   createReferenceSearchJob,
+  createFanqieRankSearchJob,
   getReferenceBookFileUrl,
   getReferenceSearchJob,
   listReferenceBooks,
   listReferenceDownloadJobs,
+  listFanqieRankOptions,
   redownloadReferenceBook,
   removeReferenceBookFile,
   retryReferenceBookImport,
@@ -26,6 +29,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/toast";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 function formatSize(value?: number | null): string {
   if (!value) return "--";
@@ -62,6 +67,10 @@ export default function ReferenceLibraryPage() {
   const [searchJobId, setSearchJobId] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [keyword, setKeyword] = useState("");
+  const [rankGender, setRankGender] = useState<FanqieRankSearchRequest["gender"]>("male");
+  const [rankList, setRankList] = useState<FanqieRankSearchRequest["list"]>("read");
+  const [rankCategoryId, setRankCategoryId] = useState("257");
+  const [rankLimit, setRankLimit] = useState("20");
 
   const searchJobQuery = useQuery({
     queryKey: ["reference-library", "search-job", searchJobId],
@@ -79,9 +88,18 @@ export default function ReferenceLibraryPage() {
     queryFn: () => listReferenceBooks(keyword.trim() || undefined),
     refetchInterval: 10_000,
   });
+  const rankOptionsQuery = useQuery({ queryKey: ["reference-library", "fanqie-rank-options"], queryFn: listFanqieRankOptions, staleTime: 60 * 60_000 });
 
   const searchMutation = useMutation({
     mutationFn: createReferenceSearchJob,
+    onSuccess: (response) => {
+      if (!response.data) return;
+      setSearchJobId(response.data.id);
+      setSelectedIds(new Set());
+    },
+  });
+  const rankSearchMutation = useMutation({
+    mutationFn: createFanqieRankSearchJob,
     onSuccess: (response) => {
       if (!response.data) return;
       setSearchJobId(response.data.id);
@@ -117,12 +135,20 @@ export default function ReferenceLibraryPage() {
   }, [results]);
   const jobs = jobsQuery.data?.data ?? [];
   const books = booksQuery.data?.data ?? [];
+  const rankGroup = rankOptionsQuery.data?.data?.genders.find((item) => item.gender === rankGender);
+  const rankListOption = rankGroup?.lists.find((item) => item.id === rankList);
+  const rankCategories = rankListOption?.categories ?? [];
 
   const startSearch = () => {
     const authors = authorText.split(/[\n,，]+/).map((value) => value.trim()).filter(Boolean);
     if (authors.length === 0) return toast.error("请输入作者名");
     if (authors.length > 20) return toast.error("每批最多 20 个作者");
     searchMutation.mutate(authors);
+  };
+  const startRankSearch = () => {
+    const limit = Number(rankLimit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 50) return toast.error("热门书目数量请输入 1-50");
+    rankSearchMutation.mutate({ gender: rankGender, list: rankList, categoryId: rankCategoryId, limit });
   };
   const toggleCandidate = (id: string) => {
     setSelectedIds((current) => {
@@ -163,6 +189,42 @@ export default function ReferenceLibraryPage() {
             <span className="text-xs text-muted-foreground">系统会验证详情页、章节目录和首尾章节。</span>
             <Button className="shrink-0 whitespace-nowrap" onClick={startSearch} disabled={searchMutation.isPending || ["queued", "running"].includes(searchJob?.status ?? "")}>
               <Search className="h-4 w-4" />搜索并验证
+            </Button>
+          </div>
+        </section>
+
+        <section className="space-y-4 border-t pt-5">
+          <div className="flex items-center gap-2">
+            <Flame className="h-4 w-4 text-orange-500" />
+            <h2 className="text-base font-semibold">番茄热门</h2>
+            <span className="text-xs text-muted-foreground">官方榜单书目会逐本验证可下载来源</span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="space-y-1 text-xs text-muted-foreground">频道
+              <Select value={rankGender} onValueChange={(value) => { const next = value as FanqieRankSearchRequest["gender"]; setRankGender(next); const first = rankOptionsQuery.data?.data?.genders.find((item) => item.gender === next)?.lists.find((item) => item.id === rankList)?.categories[0]; if (first) setRankCategoryId(first.id); }}>
+                <SelectTrigger className="h-10 rounded-md text-sm text-foreground"><SelectValue /></SelectTrigger>
+                <SelectContent>{rankOptionsQuery.data?.data?.genders.map((item) => <SelectItem key={item.gender} value={item.gender}>{item.genderLabel}</SelectItem>)}</SelectContent>
+              </Select>
+            </label>
+            <label className="space-y-1 text-xs text-muted-foreground">榜单
+              <Select value={rankList} onValueChange={(value) => setRankList(value as FanqieRankSearchRequest["list"])}>
+                <SelectTrigger className="h-10 rounded-md text-sm text-foreground"><SelectValue /></SelectTrigger>
+                <SelectContent>{rankGroup?.lists.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </label>
+            <label className="space-y-1 text-xs text-muted-foreground">分类
+              <Select value={rankCategoryId} onValueChange={setRankCategoryId}>
+                <SelectTrigger className="h-10 rounded-md text-sm text-foreground"><SelectValue placeholder="选择分类" /></SelectTrigger>
+                <SelectContent>{rankCategories.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </label>
+            <label className="space-y-1 text-xs text-muted-foreground">抓取数量
+              <Input type="number" min={1} max={50} value={rankLimit} onChange={(event) => setRankLimit(event.target.value)} className="h-10 rounded-md" />
+            </label>
+          </div>
+          <div className="flex justify-end">
+            <Button variant="outline" onClick={startRankSearch} disabled={rankSearchMutation.isPending || searchMutation.isPending || ["queued", "running"].includes(searchJob?.status ?? "")}>
+              <Flame className="h-4 w-4" />拉取热门并验证
             </Button>
           </div>
         </section>

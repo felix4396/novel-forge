@@ -8,10 +8,19 @@ import type {
   ReferenceBookCandidate,
   ReferenceBookSourceCandidate,
   ReferenceSearchJob as ReferenceSearchJobDto,
+  FanqieRankOptions,
+  FanqieRankSearchRequest,
 } from "@ai-novel/shared/types/referenceLibrary";
 import { prisma } from "../../db/prisma";
 import { AppError } from "../../middleware/errorHandler";
 import { KnowledgeService } from "../knowledge/KnowledgeService";
+import {
+  FANQIE_RANK_CATEGORIES,
+  FanqieRankClient,
+  type FanqieRankGender,
+  type FanqieRankItem,
+  type FanqieRankList,
+} from "./FanqieRankClient";
 import { SoNovelClient, type SoNovelSearchResult } from "./SoNovelClient";
 import {
   buildCandidateId,
@@ -25,6 +34,7 @@ const SEARCH_CACHE_MS = 30 * 60_000;
 const MAX_FILE_SIZE = 200 * 1024 * 1024;
 const MIN_FREE_BYTES = 2 * 1024 * 1024 * 1024;
 const SEARCH_VALIDATION_CONCURRENCY = 3;
+const FANQIE_SEARCH_PREFIX = "__fanqie_rank__:";
 
 async function mapWithConcurrency<T, R>(
   items: T[],
@@ -140,6 +150,7 @@ function extractEpubChapters(filePath: string): Array<{ title: string; content: 
 
 export class ReferenceLibraryService {
   private readonly soNovel = new SoNovelClient();
+  private readonly fanqieRank = new FanqieRankClient();
   private readonly knowledgeService = new KnowledgeService();
   private readonly libraryRoot = path.resolve(
     process.env.REFERENCE_LIBRARY_ROOT ?? path.join(process.cwd(), "data", "reference-books"),
@@ -171,6 +182,182 @@ export class ReferenceLibraryService {
       },
     });
     return this.mapSearchJob(job);
+  }
+
+  async createFanqieRankSearchJob(rawInput: FanqieRankSearchRequest): Promise<ReferenceSearchJobDto> {
+    const request = this.normalizeFanqieSearchRequest(rawInput);
+    const job = await prisma.referenceSearchJob.create({
+      data: {
+        authorsJson: JSON.stringify([`${FANQIE_SEARCH_PREFIX}${JSON.stringify(request)}`]),
+        totalAuthors: 1,
+        expiresAt: new Date(Date.now() + SEARCH_TTL_MS),
+      },
+    });
+    return this.mapSearchJob(job);
+  }
+
+  async listFanqieRankOptions(): Promise<FanqieRankOptions> {
+    return {
+      genders: [
+        {
+          gender: "male",
+          genderLabel: "男频",
+          lists: this.buildFanqieRankOptionLists("male"),
+        },
+        {
+          gender: "female",
+          genderLabel: "女频",
+          lists: this.buildFanqieRankOptionLists("female"),
+        },
+      ],
+    };
+  }
+
+  private buildFanqieRankOptionLists(gender: FanqieRankGender): FanqieRankOptions["genders"][number]["lists"] {
+    const readLabel = gender === "male" ? "男频阅读榜" : "女频阅读榜";
+    const newLabel = gender === "male" ? "男频新书榜" : "女频新书榜";
+    const categories = FANQIE_RANK_CATEGORIES[gender];
+    return [
+      { id: "read", label: readLabel, categories },
+      { id: "new", label: newLabel, categories },
+    ];
+  }
+
+  private describeFanqieRankRequest(request: FanqieRankSearchRequest): string {
+    const genderLabel = request.gender === "male" ? "男频" : "女频";
+    const listLabel = request.list === "read" ? "阅读榜" : "新书榜";
+    const categoryLabel = FANQIE_RANK_CATEGORIES[request.gender].find((item) => item.id === request.categoryId)?.name ?? request.categoryId;
+    return `番茄热门：${genderLabel}${listLabel} · ${categoryLabel}`;
+  }
+
+  private normalizeFanqieSearchRequest(rawInput: FanqieRankSearchRequest): FanqieRankSearchRequest {
+    const gender: FanqieRankGender = rawInput.gender === "female" ? "female" : "male";
+    const list: FanqieRankList = rawInput.list === "new" ? "new" : "read";
+    const categoryId = FANQIE_RANK_CATEGORIES[gender].some((item) => item.id === rawInput.categoryId)
+      ? rawInput.categoryId
+      : FANQIE_RANK_CATEGORIES[gender][0].id;
+    const limit = Math.max(1, Math.min(50, Math.trunc(Number(rawInput.limit ?? 20) || 20)));
+    return { gender, list, categoryId, limit };
+  }
+
+  private tryParseFanqieSearchRequest(authorsJson: string): FanqieRankSearchRequest | null {
+    const authors = parseJson<string[]>(authorsJson, []);
+    const marker = authors[0];
+    if (!marker?.startsWith(FANQIE_SEARCH_PREFIX)) return null;
+    try {
+      return this.normalizeFanqieSearchRequest(JSON.parse(marker.slice(FANQIE_SEARCH_PREFIX.length)) as FanqieRankSearchRequest);
+    } catch {
+      return null;
+    }
+  }
+
+  private async searchAuthors(jobId: string, authors: string[]): Promise<ReferenceBookCandidate[]> {
+    const batches: string[][] = [];
+    for (let index = 0; index < authors.length; index += 2) batches.push(authors.slice(index, index + 2));
+    const all: ReferenceBookCandidate[] = [];
+    let processed = 0;
+    for (const batch of batches) {
+      const partialResults = new Map<string, ReferenceBookCandidate[]>();
+      const authorProgress = new Map<string, number>();
+      let updateQueue = Promise.resolve();
+      const reportProgress = (author: string, progress: number, candidates: ReferenceBookCandidate[]) => {
+        updateQueue = updateQueue.then(async () => {
+          partialResults.set(author, candidates);
+          authorProgress.set(author, progress);
+          const batchProgress = batch.reduce((sum, item) => sum + (authorProgress.get(item) ?? 0), 0) / 100;
+          const overallProgress = Math.min(99, Math.round(((processed + batchProgress) / authors.length) * 100));
+          await prisma.referenceSearchJob.update({
+            where: { id: jobId },
+            data: {
+              progress: Math.max(1, overallProgress),
+              processedAuthors: processed,
+              resultJson: JSON.stringify([...all, ...batch.flatMap((item) => partialResults.get(item) ?? [])]),
+              heartbeatAt: new Date(),
+            },
+          });
+        });
+        return updateQueue;
+      };
+      const results = await Promise.all(batch.map((author) => this.searchAuthor(
+        author,
+        (progress, candidates) => reportProgress(author, progress, candidates),
+      )));
+      await updateQueue;
+      all.push(...results.flat());
+      processed += batch.length;
+      await prisma.referenceSearchJob.update({
+        where: { id: jobId },
+        data: {
+          processedAuthors: processed,
+          progress: Math.round((processed / authors.length) * 100),
+          resultJson: JSON.stringify(all),
+          heartbeatAt: new Date(),
+        },
+      });
+    }
+    return all;
+  }
+
+  private async searchFanqieRank(jobId: string, request: FanqieRankSearchRequest): Promise<ReferenceBookCandidate[]> {
+    const rank = await this.fanqieRank.listRank({ ...request, limit: request.limit ?? 20 });
+    const candidates: ReferenceBookCandidate[] = [];
+    if (rank.items.length === 0) {
+      await prisma.referenceSearchJob.update({
+        where: { id: jobId },
+        data: { progress: 100, processedAuthors: 1, resultJson: "[]", heartbeatAt: new Date() },
+      });
+      return candidates;
+    }
+    for (const [index, item] of rank.items.entries()) {
+      const result = await this.searchBookCandidate(item, rank.label);
+      if (result) candidates.push(result);
+      await prisma.referenceSearchJob.update({
+        where: { id: jobId },
+        data: {
+          progress: Math.min(99, Math.round(((index + 1) / rank.items.length) * 100)),
+          processedAuthors: 1,
+          resultJson: JSON.stringify(candidates),
+          heartbeatAt: new Date(),
+        },
+      });
+    }
+    return candidates.sort((left, right) => left.title.localeCompare(right.title, "zh-CN"));
+  }
+
+  private async searchBookCandidate(
+    item: FanqieRankItem,
+    sourceLabel: string,
+  ): Promise<ReferenceBookCandidate | null> {
+    const expectedAuthor = normalizeReferenceIdentity(item.author);
+    const expectedTitle = normalizeReferenceIdentity(item.title);
+    const searchKeywords = [item.title, `${item.title} ${item.author}`, `${item.author} ${item.title}`];
+    const searched = new Set<string>();
+    const results: SoNovelSearchResult[] = [];
+    for (const keyword of searchKeywords) {
+      const normalizedKeyword = normalizeReferenceIdentity(keyword);
+      if (!normalizedKeyword || searched.has(normalizedKeyword)) continue;
+      searched.add(normalizedKeyword);
+      try {
+        const found = await this.soNovel.search(keyword);
+        results.push(...found);
+      } catch {
+        // Keep trying alternative keywords.
+      }
+    }
+    const filtered = results.filter((result) => {
+      const authorKey = normalizeReferenceIdentity(cleanAuthorName(result.author ?? ""));
+      const titleKey = normalizeReferenceIdentity(result.bookName);
+      return authorKey === expectedAuthor && titleKey === expectedTitle;
+    });
+    return this.buildCandidateFromResults(item.author, item.title, filtered, {
+      sourceType: "fanqie_rank",
+      sourceLabel,
+      fallbackCategory: item.categoryName,
+      fallbackIntro: item.intro,
+      fallbackLatestChapter: item.latestChapter,
+      fallbackPublicationStatus: item.publicationStatus,
+      fallbackWordCount: item.wordCount,
+    });
   }
 
   async getSearchJob(id: string): Promise<ReferenceSearchJobDto | null> {
@@ -346,49 +533,10 @@ export class ReferenceLibraryService {
     });
     if (claimed.count === 0) return true;
     try {
-      const authors = parseJson<string[]>(job.authorsJson, []);
-      const batches: string[][] = [];
-      for (let index = 0; index < authors.length; index += 2) batches.push(authors.slice(index, index + 2));
-      const all: ReferenceBookCandidate[] = [];
-      let processed = 0;
-      for (const batch of batches) {
-        const partialResults = new Map<string, ReferenceBookCandidate[]>();
-        const authorProgress = new Map<string, number>();
-        let updateQueue = Promise.resolve();
-        const reportProgress = (author: string, progress: number, candidates: ReferenceBookCandidate[]) => {
-          updateQueue = updateQueue.then(async () => {
-            partialResults.set(author, candidates);
-            authorProgress.set(author, progress);
-            const batchProgress = batch.reduce((sum, item) => sum + (authorProgress.get(item) ?? 0), 0) / 100;
-            const overallProgress = Math.min(99, Math.round(((processed + batchProgress) / authors.length) * 100));
-            await prisma.referenceSearchJob.update({
-              where: { id: job.id },
-              data: {
-                progress: Math.max(1, overallProgress),
-                resultJson: JSON.stringify([...all, ...batch.flatMap((item) => partialResults.get(item) ?? [])]),
-                heartbeatAt: new Date(),
-              },
-            });
-          });
-          return updateQueue;
-        };
-        const results = await Promise.all(batch.map((author) => this.searchAuthor(
-          author,
-          (progress, candidates) => reportProgress(author, progress, candidates),
-        )));
-        await updateQueue;
-        all.push(...results.flat());
-        processed += batch.length;
-        await prisma.referenceSearchJob.update({
-          where: { id: job.id },
-          data: {
-            processedAuthors: processed,
-            progress: Math.round((processed / authors.length) * 100),
-            resultJson: JSON.stringify(all),
-            heartbeatAt: new Date(),
-          },
-        });
-      }
+      const fanqieRequest = this.tryParseFanqieSearchRequest(job.authorsJson);
+      const all = fanqieRequest
+        ? await this.searchFanqieRank(job.id, fanqieRequest)
+        : await this.searchAuthors(job.id, parseJson<string[]>(job.authorsJson, []));
       await prisma.referenceSearchJob.update({
         where: { id: job.id },
         data: { status: "succeeded", progress: 100, finishedAt: new Date(), heartbeatAt: new Date() },
@@ -497,9 +645,13 @@ export class ReferenceLibraryService {
     id: string; authorsJson: string; status: string; progress: number; processedAuthors: number; totalAuthors: number;
     resultJson: string; lastError: string | null; expiresAt: Date; createdAt: Date; updatedAt: Date;
   }): ReferenceSearchJobDto {
+    const fanqieRequest = this.tryParseFanqieSearchRequest(job.authorsJson);
+    const authors = fanqieRequest ? [this.describeFanqieRankRequest(fanqieRequest)] : parseJson(job.authorsJson, []);
     return {
       id: job.id,
-      authors: parseJson(job.authorsJson, []),
+      authors,
+      queryType: fanqieRequest ? "fanqie_rank" : "authors",
+      queryLabel: fanqieRequest ? this.describeFanqieRankRequest(fanqieRequest) : null,
       status: job.status as ReferenceSearchJobDto["status"],
       progress: job.progress,
       processedAuthors: job.processedAuthors,
@@ -532,66 +684,91 @@ export class ReferenceLibraryService {
     const candidates: ReferenceBookCandidate[] = [];
     const titleGroups = [...groups.entries()];
     if (titleGroups.length === 0) await onProgress?.(100, candidates);
-    for (const [titleIndex, [normalizedTitle, group]] of titleGroups.entries()) {
-      const sourcesById = new Map<number, Array<{ source: SoNovelSearchResult; priority: number }>>();
-      group.forEach((source, priority) => {
-        const entries = sourcesById.get(source.sourceId) ?? [];
-        entries.push({ source, priority });
-        sourcesById.set(source.sourceId, entries);
+    for (const [titleIndex, [, group]] of titleGroups.entries()) {
+      const candidate = await this.buildCandidateFromResults(author, group[0].bookName, group, {
+        sourceType: "author_search",
       });
-
-      const checkedSources = await mapWithConcurrency(
-        [...sourcesById.values()],
-        SEARCH_VALIDATION_CONCURRENCY,
-        async (sourceEntries) => {
-          for (const { source, priority } of sourceEntries) {
-            try {
-              const checked = await this.soNovel.check(source.url);
-              if (normalizeReferenceIdentity(cleanAuthorName(checked.author)) !== expectedAuthor) continue;
-              return {
-                metadata: { ...source, ...checked },
-                candidate: {
-                  sourceId: source.sourceId,
-                  sourceName: source.sourceName,
-                  url: source.url,
-                  chapterCount: checked.chapterCount,
-                  priority,
-                } satisfies ReferenceBookSourceCandidate,
-              };
-            } catch {
-              // Try the next URL from the same source before discarding that source.
-            }
-          }
-          return null;
-        },
-      );
-      const availableSources = checkedSources.filter((item) => item !== null);
-      const verified = availableSources
-        .map((item) => item.candidate)
-        .sort((left, right) => left.priority - right.priority);
-      const metadata = availableSources
-        .sort((left, right) => left.candidate.priority - right.candidate.priority)[0]?.metadata ?? group[0];
-      let chapterCount = 0;
-      for (const source of verified) chapterCount = Math.max(chapterCount, source.chapterCount);
-      if (verified.length > 0) {
-        candidates.push({
-          id: buildCandidateId(author, metadata.bookName),
-          author,
-          normalizedAuthor: expectedAuthor,
-          title: metadata.bookName,
-          normalizedTitle,
-          category: nullable(metadata.category),
-          intro: nullable(metadata.intro),
-          latestChapter: nullable(metadata.latestChapter),
-          publicationStatus: nullable(metadata.status),
-          wordCount: nullable(metadata.wordCount),
-          chapterCount,
-          sources: verified,
-        });
-      }
+      if (candidate) candidates.push(candidate);
       await onProgress?.(Math.round(((titleIndex + 1) / titleGroups.length) * 100), [...candidates]);
     }
     return candidates.sort((left, right) => left.title.localeCompare(right.title, "zh-CN"));
+  }
+
+  private async buildCandidateFromResults(
+    author: string,
+    title: string,
+    results: SoNovelSearchResult[],
+    options: {
+      sourceType: "author_search" | "fanqie_rank";
+      sourceLabel?: string | null;
+      fallbackCategory?: string | null;
+      fallbackIntro?: string | null;
+      fallbackLatestChapter?: string | null;
+      fallbackPublicationStatus?: string | null;
+      fallbackWordCount?: string | null;
+    },
+  ): Promise<ReferenceBookCandidate | null> {
+    if (results.length === 0) return null;
+    const normalizedAuthor = normalizeReferenceIdentity(author);
+    const normalizedTitle = normalizeReferenceIdentity(title);
+    const sourcesById = new Map<number, Array<{ source: SoNovelSearchResult; priority: number }>>();
+    results.forEach((source, priority) => {
+      const entries = sourcesById.get(source.sourceId) ?? [];
+      entries.push({ source, priority });
+      sourcesById.set(source.sourceId, entries);
+    });
+    const checkedSources = await mapWithConcurrency(
+      [...sourcesById.values()],
+      SEARCH_VALIDATION_CONCURRENCY,
+      async (sourceEntries) => {
+        for (const { source, priority } of sourceEntries) {
+          try {
+            const checked = await this.soNovel.check(source.url);
+            const checkedAuthor = normalizeReferenceIdentity(cleanAuthorName(checked.author));
+            const checkedTitle = normalizeReferenceIdentity(source.bookName);
+            if (checkedAuthor !== normalizedAuthor || checkedTitle !== normalizedTitle) continue;
+            return {
+              metadata: { ...source, ...checked },
+              candidate: {
+                sourceId: source.sourceId,
+                sourceName: source.sourceName,
+                url: source.url,
+                chapterCount: checked.chapterCount,
+                priority,
+              } satisfies ReferenceBookSourceCandidate,
+            };
+          } catch {
+            // Try the next URL from the same source before discarding that source.
+          }
+        }
+        return null;
+      },
+    );
+    const availableSources = checkedSources.filter((item): item is NonNullable<typeof item> => item !== null);
+    const verified = availableSources
+      .map((item) => item.candidate)
+      .sort((left, right) => left.priority - right.priority);
+    if (verified.length === 0) return null;
+    const metadata = availableSources
+      .sort((left, right) => left.candidate.priority - right.candidate.priority)[0]?.metadata ?? results[0];
+    let chapterCount = 0;
+    for (const source of verified) chapterCount = Math.max(chapterCount, source.chapterCount);
+    return {
+      id: buildCandidateId(author, metadata.bookName),
+      author: cleanAuthorName(author),
+      normalizedAuthor,
+      title: metadata.bookName,
+      normalizedTitle,
+      sourceType: options.sourceType,
+      sourceLabel: options.sourceLabel ?? null,
+      category: nullable(metadata.category) ?? options.fallbackCategory ?? null,
+      intro: nullable(metadata.intro) ?? options.fallbackIntro ?? null,
+      latestChapter: nullable(metadata.latestChapter) ?? options.fallbackLatestChapter ?? null,
+      publicationStatus: nullable(metadata.status) ?? options.fallbackPublicationStatus ?? null,
+      wordCount: nullable(metadata.wordCount) ?? options.fallbackWordCount ?? null,
+      chapterCount,
+      sources: verified,
+    };
   }
 
   private async storeAndImport(bookId: string, stagedFileName: string, taskId: string): Promise<void> {

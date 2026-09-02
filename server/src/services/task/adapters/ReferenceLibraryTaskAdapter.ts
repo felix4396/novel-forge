@@ -5,6 +5,22 @@ import { archiveTask as recordTaskArchive, getArchivedTaskIds, isTaskArchived } 
 
 type ReferenceTaskKind = Extract<TaskKind, "reference_search" | "reference_download">;
 
+function searchLabel(authorsJson: string): string {
+  const authors = JSON.parse(authorsJson) as string[];
+  const marker = authors[0] ?? "";
+  if (marker.startsWith("__fanqie_rank__:")) {
+    try {
+      const request = JSON.parse(marker.slice("__fanqie_rank__:".length)) as { gender: string; list: string; categoryId: string };
+      const gender = request.gender === "female" ? "女频" : "男频";
+      const list = request.list === "new" ? "新书榜" : "阅读榜";
+      return `番茄热门：${gender}${list} · ${request.categoryId}`;
+    } catch {
+      return "番茄热门";
+    }
+  }
+  return authors.join("、");
+}
+
 function steps(status: TaskStatus, createdAt: string, updatedAt: string, download: boolean) {
   const labels = download ? ["准备", "下载", "导入知识库"] : ["排队", "搜索", "验证来源"];
   const active = status === "queued" ? 0 : status === "running" ? 1 : 2;
@@ -34,12 +50,13 @@ export class ReferenceLibraryTaskAdapter {
       });
       return rows.map((row) => {
         const authors = JSON.parse(row.authorsJson) as string[];
+        const label = searchLabel(row.authorsJson);
         return {
-          id: row.id, kind, title: `参考书搜索：${authors.join("、")}`, status: row.status as TaskStatus,
+          id: row.id, kind, title: `参考书搜索：${label}`, status: row.status as TaskStatus,
           progress: row.progress, currentStage: row.status === "running" ? "搜索并验证来源" : null,
           currentItemLabel: `${row.processedAuthors}/${row.totalAuthors} 位作者`, attemptCount: 1, maxAttempts: 1,
           lastError: row.lastError, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(),
-          heartbeatAt: row.heartbeatAt?.toISOString() ?? null, ownerId: row.id, ownerLabel: authors.join("、"),
+          heartbeatAt: row.heartbeatAt?.toISOString() ?? null, ownerId: row.id, ownerLabel: label,
           sourceRoute: "/reference-library", failureSummary: row.lastError,
         } satisfies UnifiedTaskSummary;
       });

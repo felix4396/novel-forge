@@ -3,12 +3,24 @@ import type {
   ReferenceBook,
   ReferenceDownloadJob,
   ReferenceSearchJob,
+  FanqieRankOptions,
+  FanqieRankSearchRequest,
 } from "@ai-novel/shared/types/referenceLibrary";
 import { API_BASE_URL } from "@/lib/constants";
 import { apiClient } from "./client";
 
 export async function createReferenceSearchJob(authors: string[]) {
   const { data } = await apiClient.post<ApiResponse<ReferenceSearchJob>>("/reference-library/search-jobs", { authors });
+  return data;
+}
+
+export async function listFanqieRankOptions() {
+  const { data } = await apiClient.get<ApiResponse<FanqieRankOptions>>("/reference-library/fanqie-rank/options");
+  return data;
+}
+
+export async function createFanqieRankSearchJob(input: FanqieRankSearchRequest) {
+  const { data } = await apiClient.post<ApiResponse<ReferenceSearchJob>>("/reference-library/fanqie-rank/search-jobs", input);
   return data;
 }
 

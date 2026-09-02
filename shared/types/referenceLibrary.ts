@@ -14,6 +14,8 @@ export interface ReferenceBookCandidate {
   normalizedAuthor: string;
   title: string;
   normalizedTitle: string;
+  sourceType?: "author_search" | "fanqie_rank";
+  sourceLabel?: string | null;
   category?: string | null;
   intro?: string | null;
   latestChapter?: string | null;
@@ -26,6 +28,8 @@ export interface ReferenceBookCandidate {
 export interface ReferenceSearchJob {
   id: string;
   authors: string[];
+  queryType?: "authors" | "fanqie_rank";
+  queryLabel?: string | null;
   status: ReferenceJobStatus;
   progress: number;
   processedAuthors: number;
@@ -35,6 +39,32 @@ export interface ReferenceSearchJob {
   expiresAt: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface FanqieRankCategory {
+  id: string;
+  name: string;
+}
+
+export interface FanqieRankOptionGroup {
+  gender: "male" | "female";
+  genderLabel: string;
+  lists: Array<{
+    id: "read" | "new";
+    label: string;
+    categories: FanqieRankCategory[];
+  }>;
+}
+
+export interface FanqieRankOptions {
+  genders: FanqieRankOptionGroup[];
+}
+
+export interface FanqieRankSearchRequest {
+  gender: "male" | "female";
+  list: "read" | "new";
+  categoryId: string;
+  limit?: number;
 }
 
 export interface ReferenceBookSource {

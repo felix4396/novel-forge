@@ -1,5 +1,6 @@
 import { Router } from "express";
 import type { ApiResponse } from "@ai-novel/shared/types/api";
+import type { FanqieRankSearchRequest } from "@ai-novel/shared/types/referenceLibrary";
 import { z } from "zod";
 import { authMiddleware } from "../middleware/auth";
 import { validate } from "../middleware/validate";
@@ -10,6 +11,12 @@ const idParamsSchema = z.object({ id: z.string().trim().min(1) });
 const searchSchema = z.object({
   authors: z.array(z.string().trim().min(1)).min(1).max(20),
 });
+const fanqieSearchSchema = z.object({
+  gender: z.enum(["male", "female"]),
+  list: z.enum(["read", "new"]),
+  categoryId: z.string().trim().min(1),
+  limit: z.coerce.number().int().min(1).max(50).optional(),
+}) satisfies z.ZodType<FanqieRankSearchRequest>;
 const downloadSchema = z.object({
   searchJobId: z.string().trim().min(1),
   candidateIds: z.array(z.string().trim().min(1)).min(1).max(100),
@@ -22,6 +29,24 @@ router.post("/search-jobs", validate({ body: searchSchema }), async (req, res, n
   try {
     const data = await referenceLibraryService.createSearchJob(req.body.authors);
     res.status(202).json({ success: true, data, message: "参考书搜索任务已创建。" } satisfies ApiResponse<typeof data>);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/fanqie-rank/options", async (_req, res, next) => {
+  try {
+    const data = await referenceLibraryService.listFanqieRankOptions();
+    res.json({ success: true, data } satisfies ApiResponse<typeof data>);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/fanqie-rank/search-jobs", validate({ body: fanqieSearchSchema }), async (req, res, next) => {
+  try {
+    const data = await referenceLibraryService.createFanqieRankSearchJob(req.body);
+    res.status(202).json({ success: true, data, message: "番茄热门搜索任务已创建。" } satisfies ApiResponse<typeof data>);
   } catch (error) {
     next(error);
   }
